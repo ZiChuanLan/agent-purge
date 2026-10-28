@@ -73,7 +73,7 @@ agent-purge pi --persona <id>  # 只这一轮用别的
 | `codex` | 启动参数 `-c model_instructions_file=` | 0.163.0 | 21,026 | 24 |
 | `claude` | `--system-prompt-file` + 二进制补丁清残留身份句 | 2.1.304 | 6,379 | 156 |
 | `grok` | `--system-prompt-override` | 1.0.62 | 5,146 | 21 |
-| `omp` | `--system-prompt` | 17.4.2 | 34,511 | 10,106 |
+| `omp` | 原生扩展：`before_agent_start` 改写 systemPrompt 数组，会话内 `/purge` 热切；`--ask` 仍走 `--system-prompt` | 17.4.2 | 34,511 | 10,106 |
 | `hermes` | 临时 HOME 里替换 `SOUL.md` | 0.21.5 | 8,139 | 7,554 |
 | `zcode` | UserPromptSubmit hook（user 角色）+ `customSystemPrompt` | 0.16.9 | 9,359 | 9,359 |
 | `opencode` | cwd 下 `.opencode/plugin/*.ts` 原地改 `output.system` | 1.19.3 | 19,332 | 112 |

@@ -28,6 +28,9 @@ const recovered = recover(); // 上次进程被杀时留下的半改配置，开
 if (recovered > 0) console.log(`[restore] 回滚了 ${recovered} 个上次残留的配置文件`);
 if (argv.includes("--help") || argv.includes("-h")) help(); // 永远优先于默认值
 const flag = (name, fallback) => {
+	// 支持 --mode=append 这种写法（以前只认空格分隔，等号形式会被静默忽略）
+	const inline = argv.find((a) => a.startsWith(name + "="));
+	if (inline !== undefined) return inline.slice(name.length + 1);
 	const i = argv.indexOf(name);
 	return i === -1 ? fallback : argv[i + 1];
 };
@@ -107,12 +110,13 @@ async function launch(name) {
 	const mode = explicitMode ?? state.default?.mode ?? "replace";
 
 	// 裸敲 pi 的持久位（写 state.json，扩展下一会话读它）
-	const autoFlag = name === "pi" ? flag("--auto", null) : null;
+	const autoFlag = name === "pi" || name === "omp" ? flag("--auto", null) : null;
 	if (autoFlag !== null) {
 		if (autoFlag !== "on" && autoFlag !== "off") die("--auto 只能是 on / off");
-		const { setPiAuto } = await import("../lib/state.mjs");
-		setPiAuto(DATA, autoFlag === "on");
-		console.log(`[auto] 裸敲 pi ${autoFlag === "on" ? "会" : "不会"}自动注入（已写入 state.json）`);
+		const { setPiAuto, setOmpAuto } = await import("../lib/state.mjs");
+		if (name === "pi") setPiAuto(DATA, autoFlag === "on");
+		else setOmpAuto(DATA, autoFlag === "on");
+		console.log(`[auto] 裸敲 ${name} ${autoFlag === "on" ? "会" : "不会"}自动注入（已写入 state.json）`);
 	}
 
 	// pi 的人设落在哪一层：sys（默认，真系统提示词）或 user（塞进用户消息，给忽略 system 的模型）
@@ -130,7 +134,8 @@ async function launch(name) {
 
 	// 实测策略：该 harness 的哪一层真的能注入（数据来自 matrix.json armor 段）
 	const { plan } = await import("../lib/armor.mjs");
-	const strategy = plan(matrix, name);	if (!strategy.error) {
+	const strategy = plan(matrix, name);
+	if (!strategy.error) {
 		if (strategy.requiresSeed) console.log(`[策略] ${name}：裸注入 sys 层实测 ${strategy.bare.sys}%，带人设词种子 ${strategy.persona.sys}% —— 需要 seed 层`);
 		const noSys = strategy.blocked.find((b) => b.layer === "sys");
 		if (noSys && mode !== "off") console.log(`[策略] ${name}：sys 层不可用（${noSys.reason}），本次只能靠 user 层`);
@@ -172,7 +177,7 @@ async function launch(name) {
 	if (dd !== -1) {
 		passthrough = argv.slice(dd + 1);
 	} else {
-		const ownWithValue = new Set(["--ask", "--mode", "--persona", "--cwd", "--auto"]);
+		const ownWithValue = new Set(["--ask", "--mode", "--persona", "--cwd", "--auto", "--layer"]);
 		const tail = argv.slice(1);
 		for (let i = 0; i < tail.length; i++) {
 			const t = tail[i];
@@ -185,10 +190,12 @@ async function launch(name) {
 		}
 	}
 
+	const askEq = argv.find((a) => a.startsWith("--ask="));
 	const askIdx = argv.indexOf("--ask");
+	const askPrompt = askEq !== undefined ? askEq.slice(6) : askIdx !== -1 ? argv[askIdx + 1] : null;
 	let built;
-	if (askIdx !== -1) {
-		const raw = argv[askIdx + 1];
+	if (askPrompt !== null) {
+		const raw = askPrompt;
 		if (!raw || raw.startsWith("--")) die('--ask 需要一个 prompt，例如: agent-purge codex --ask "解释这段代码"');
 		const prompt = raw.trim();
 		const one = oneshots[name];
@@ -210,6 +217,35 @@ async function launch(name) {
 
 	if (built.note) console.log(built.note);
 	if (built.residueHint) console.log(`[residue] ${built.residueHint}`);
+	const dryRun = argv.includes("--dry-run");
+	// 启动时把人设塞进扩展（omp / pi）：命令行走不通 10K 人设，扩展也没有长度上限。
+	// omp 交互式启动时把后端的 --system-prompt 摘掉，否则扩展和命令行会各注入一次。
+	// 但 --profile / --no-extensions 下默认扩展目录不会加载：这两个情况保留命令行注入。
+	const ompProfile = name === "omp" ? (flag("--profile", null) ?? process.env.OMP_PROFILE ?? null) : null;
+	const ompNoExtensions = name === "omp" && (argv.includes("--no-extensions") || argv.some((a) => a.startsWith("--no-extensions=")));
+	const useExtension = name !== "omp" || (askPrompt === null && !ompProfile && !ompNoExtensions);
+	let extFile = null;
+	if ((name === "pi" || name === "omp") && !built.unsupported && !built.manual) {
+		const isOmp = name === "omp";
+		if (mode === "off") {
+			// 不装、也不喊注入：扩展就算在盘上，也会因为 mode=off + 没 FORCE 而沉默
+			built.env = { ...built.env, AGENT_PURGE_MODE: "off" };
+		} else if (useExtension) {
+			if (isOmp && built.args[0] === "--system-prompt") built.args.splice(0, 2);
+			if (!dryRun) {
+				const { installSlash } = await import("../lib/slashes.mjs");
+				const r = installSlash(name, DATA, { personaId: picked.id, personaBody: personaText });
+				if (r.error) die(`${name}: ${r.error}`);
+				extFile = r.file;
+			}
+			built.env = { ...built.env, AGENT_PURGE_PERSONA: picked.id, AGENT_PURGE_MODE: mode, AGENT_PURGE_FORCE: "1" };
+		} else if (isOmp && askPrompt === null) {
+			console.log("[ext] --profile/--no-extensions：本次保留命令行注入，/purge 热切不可用");
+		} else if (isOmp) {
+			// --ask：命令行已经注入；扩展若在盘上且 ompAuto 开着会再注一遍，这里按 off 静音
+			built.env = { ...built.env, AGENT_PURGE_MODE: "off" };
+		}
+	}
 	// off 有两种来源：全局总电源关了，或者这一轮手动指定。措辞不能混，否则看日志的人会以为总开关坏了
 	if (mode === "off") {
 		const globalOff = (state.default?.mode ?? "") === "off";
@@ -220,32 +256,29 @@ async function launch(name) {
 		);
 	}
 	console.log(`[cmd] ${[built.cmd, ...built.args.map((a) => (a.includes(" ") ? JSON.stringify(a) : a))].join(" ")}`);
-	if (argv.includes("--dry-run")) process.exit(0);
-
-	// pi：注入活在扩展里（命令行装不下 10K 人设）。
-	//   mode ≠ off：确保扩展在位（没有就装、有就重写成人设最新版），并用 AGENT_PURGE_FORCE=1 明确告诉扩展“这次是启动器要注入”。
-	//   mode = off：不装、也不喊注入。扩展就算挂在盘上，也会因为 mode=off + 没 FORCE 而保持沉默（裸敲 pi 原样跑）。
-	if (name === "pi" && !built.unsupported && !built.manual) {
-		const { installSlash } = await import("../lib/slashes.mjs");
-		if (mode === "off") {
-			// 不装、不喊注入：扩展就算在盘上，也会因为 mode=off + 没 FORCE 而沉默
-			built.env = { ...built.env, AGENT_PURGE_MODE: "off" };
-		} else {
-			installSlash("pi", DATA, { personaId: picked.id, personaBody: personaText });
-			built.env = { ...built.env, AGENT_PURGE_PERSONA: picked.id, AGENT_PURGE_MODE: mode, AGENT_PURGE_FORCE: "1" };
-		}
-	}
+	if (extFile) console.log(`[ext] ${extFile}（/purge 热切换）`);
+	if (dryRun) process.exit(0);
 
 	if (!resolveBin(built.cmd)) {
 		die(`${name}: 找不到可执行文件 ${built.cmd}（PATH 里没有它；agent-purge doctor 可看本机探测结果）`);
 	}
 	built.setup?.();
+	// Ctrl-C 时也要清掉一次性插件：process.exit 会触发 exit 监听器，不依赖 child close
+	let cleaned = false;
+	const cleanup = () => {
+		if (cleaned) return;
+		cleaned = true;
+		try {
+			built.cleanup?.();
+		} catch {}
+	};
+	process.once("exit", cleanup);
 	// 一次性问答：stdin 直接给 NUL。否则 codex 这类会先“Reading additional input from stdin...”
 	// 并阻塞到 EOF（非 TTY 环境必现）；stdin 关了它就直接跑。
-	const stdio = askIdx !== -1 ? ["ignore", "inherit", "inherit"] : "inherit";
+	const stdio = askPrompt !== null ? ["ignore", "inherit", "inherit"] : "inherit";
 	const child = spawnBin(built.cmd, built.args, { cwd, stdio, env: { ...process.env, ...built.env } });
 	const finish = (code) => {
-		built.cleanup?.();
+		cleanup();
 		process.exit(code ?? 1);
 	};
 	child.on("error", (e) => {

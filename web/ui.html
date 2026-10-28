@@ -567,8 +567,8 @@ const ARM_INFO = {
 shim:    { name: "接管裸命令", desc: (h) => h?.id === "pi"
   ? "PATH 最前放个同名壳：敲 pi 就注入。想要“裸启动也带人设”，开这个。"
   : `往 PATH 前置一个同名小壳：直接敲 ${h?.id || "<harness>"} 也是接管版。` },
-slash:   { name: "会话内热切", desc: (h) => h?.id === "pi"
-  ? "写 pi 扩展，只挂 /purge：不敲 /purge 就原样跑，动手才改写。"
+slash:   { name: "会话内热切", desc: (h) => h?.id === "pi" || h?.id === "omp"
+  ? `写 ${h.id} 扩展，只挂 /purge：不敲 /purge 就原样跑，动手才改写。`
   : "写 harness 自己支持的扩展/命令，会话里 /purge 切换。" },
   install: { name: "配置文件常驻", desc: () => "写进 harness 自己的指令文件：连别人启动、GUI 里点开都生效。" },
 };
@@ -688,7 +688,7 @@ function renderOverview() {
   const hid = S.defaults.harness;
   const h = S.harnesses.find((x) => x.id === hid) || S.harnesses[0];
   const persona = S.personas.find((p) => p.id === (selPersona || S.persona)) || S.personas[0];
-  const hot = S.harnesses.filter((h) => (h.armed || []).length).map((h) => h.id + "(" + h.armed.join("/") + (h.id === "pi" && S.piAuto ? "+裸启动" : "") + ")");
+  const hot = S.harnesses.filter((h) => (h.armed || []).length).map((h) => h.id + "(" + h.armed.join("/") + (((h.id === "pi" && S.piAuto) || (h.id === "omp" && S.ompAuto)) ? "+裸启动" : "") + ")");
 
   const why = mode === "off"
     ? "总电源关着 —— 下面写的都只是配置，实际一条都不会注入。"
@@ -704,7 +704,7 @@ function renderOverview() {
           const say = (c) => c === "shim"
             ? (h.id === "pi" ? "敲 pi 会注入（PATH 刚加的前置壳）" : "敲 " + h.id + " 会注入（PATH 前置壳）")
             : c === "slash"
-              ? (h.id === "pi" ? (S.piAuto ? "裸敲 pi 也注入（扩展常驻）" : "裸敲 pi 不注入，只有会话里 /purge 才改写") : "会话里 /purge 展开成用户消息")
+              ? (h.id === "pi" || h.id === "omp" ? ((h.id === "pi" ? S.piAuto : S.ompAuto) ? `裸敲 ${h.id} 也注入（扩展常驻）` : `裸敲 ${h.id} 不注入，只有会话里 /purge 才改写`) : "会话里 /purge 展开成用户消息")
               : "改了它的配置文件，连别人启动的也生效";
           return chans.map(say).join("；") + "。";
         })()
@@ -812,6 +812,13 @@ function harnessCard(h) {
       <small class="${smallCls}" ${path && !why ? `title="${esc(path)}"` : ""}>${esc(smallText)}</small></span></button>`;
   }).join("");
 
+  // omp 的裸启动注入靠扩展常驻（ompAuto）；只有扩展已装（slash 已武装）才给这个开关
+  const ompAutoBtn = h.id === "omp" && h.armed?.includes("slash")
+    ? `<button class="chan ${S.ompAuto ? "on" : ""}" data-ompauto="${S.ompAuto ? "off" : "on"}" type="button" title="扩展常驻，不改 PATH：开关写在 state.json 的 ompAuto">
+      <span class="dot"></span><span><b>裸命令接管${S.ompAuto ? " · 开" : ""}</b>
+      <small>${S.ompAuto ? "扩展常驻：敲 omp 就注入（每次启动）" : "关着：只有 /purge 或 agent-purge omp 才注入"}</small></span></button>`
+    : "";
+
   const notes = []
     // 卡片上的徽章已经写了“SYS 通过/部分通过”，同义的行就不再重复
     .concat((row?.warnings || []).filter((w) => !/^(sys|user) (通过|部分通过|未通过)$/.test(w)))
@@ -856,7 +863,7 @@ function harnessCard(h) {
       <span><k>home</k>${esc(h.home || "—")}${h.homeExists === false ? "（不存在）" : ""}</span>
     </div>
     ${notes.length ? `<div class="hnote">${notes.map(esc).join("<br>")}</div>` : ""}
-    <div class="chans">${chans}</div>
+    <div class="chans">${chans}${ompAutoBtn}</div>
     ${profileRow}
   </div>`;
 }
@@ -1047,11 +1054,13 @@ $("#hpick").addEventListener("click", (e) => {
   selHarness = b.dataset.hpick; renderHarness();
 });
 $("#hsel").addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-piauto]"); if (!b) return;
+  const b = e.target.closest("[data-piauto], [data-ompauto]"); if (!b) return;
+  const isPi = Boolean(b.dataset.piauto);
+  const want = (isPi ? b.dataset.piauto : b.dataset.ompauto) === "on";
   await withBusy(b, async () => {
     try {
-      await api("/api/pi-auto", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: b.dataset.piauto === "on" }) });
-      toast("裸启动自动注入 → " + (b.dataset.piauto === "on" ? "开" : "关"));
+      await api(isPi ? "/api/pi-auto" : "/api/omp-auto", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ on: want }) });
+      toast((isPi ? "pi" : "omp") + " 裸启动自动注入 → " + (want ? "开" : "关"));
       await load();
     } catch (err) { toast("失败：" + err.message, true); }
   });

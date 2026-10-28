@@ -72,13 +72,13 @@ export const backends = {
 		const file = join(dir, "agent-purge.ts");
 		const src = `export const AgentPurge = async () => ({
   "experimental.chat.system.transform": async (_input, output) => {
-    output.system.splice(0, output.system.length, ${JSON.stringify(inline(personaText))});
+    ${mode === "append" ? `output.system.push(${JSON.stringify(inline(personaText))});` : `output.system.splice(0, output.system.length, ${JSON.stringify(inline(personaText))});`}
   },
 });
 `;
 		return {
 			cmd: "opencode",
-			note: "[plugin] .opencode/plugin/agent-purge.ts（原地 splice output.system）",
+			note: `[plugin] .opencode/plugin/agent-purge.ts（${mode === "append" ? "push" : "原地 splice"} output.system）`,
 			args,
 			setup: () => {
 				mkdirSync(dir, { recursive: true });
@@ -203,7 +203,7 @@ export const oneshots = {
 	}),
 	opencode: ({ prompt, personaText, mode, cwd }) => {
 		if (mode === "off") return { cmd: "opencode", args: ["run", prompt] };
-		const b = backends.opencode({ personaText, cwd, args: ["run", prompt] });
+		const b = backends.opencode({ personaText, mode, cwd, args: ["run", prompt] });
 		return b;
 	},
 	opencode2: ({ prompt, personaText, mode }) => {

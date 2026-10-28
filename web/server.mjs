@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { detect } from "../lib/detect.mjs";
 import { oneshots } from "../backends/index.mjs";
 import { createStore } from "../lib/personas.mjs";
-import { MODES, armedOf, dshProfilesOf, loadState, patchState, setArmed, setDefault, setPersona, setPiAuto, setDshProfile } from "../lib/state.mjs";
+import { MODES, armedOf, dshProfilesOf, loadState, patchState, setArmed, setDefault, setPersona, setPiAuto, setOmpAuto, setDshProfile } from "../lib/state.mjs";
 import { install, status as persistStatus, uninstall } from "../lib/persist.mjs";
 import { plans, summary as armorSummary } from "../lib/armor.mjs";
 import { installShim, shimStatus, uninstallShim } from "../lib/shim.mjs";
@@ -31,7 +31,14 @@ const matrix = JSON.parse(readFileSync(join(ROOT, "matrix.json"), "utf8"));
 const store = createStore(DATA);
 
 export function serveWeb(port = 7788) {
-	const server = createServer(handle);
+	// handle 是 async：任何异常都在这里收口，否则请求会挂着不响应
+	const server = createServer((req, res) => {
+		handle(req, res).catch((e) => {
+			try {
+				send(res, 500, { error: `服务端错误: ${e.message}` });
+			} catch {}
+		});
+	});
 	server.on("error", (e) => {
 		// 端口被旧实例占着的时候，--detach 是静默的 → 这里必须说人话，否则用户看到的是旧 UI
 		if (e.code === "EADDRINUSE") {
@@ -51,11 +58,16 @@ async function handle(req, res) {
 	const url = new URL(req.url, "http://127.0.0.1");
 	const p = url.pathname;
 
+	// 防 CSRF：本机 Web 页面能 POST 就能写配置/改人设；跨站页面用 text/plain 也能发“简单请求”。
+	// 只放同源：Origin 的 host 必须和本次请求的 Host 完全一致（端口不同也挡住）。
+	if (isMutating(req.method) && !sameOrigin(req)) return send(res, 403, { error: "只接受本机同源请求" });
+
 	if (req.method === "GET" && (p === "/" || p === "/index.html")) return html(res);
 	if (req.method === "GET" && p === "/api/state") return send(res, 200, await state(url.searchParams.get("versions") === "1"));
 	if (req.method === "GET" && p === "/api/armor") return send(res, 200, armorState());
 	if (req.method === "POST" && p === "/api/defaults") return send(res, 200, saveDefaults(await body(req)));
 	if (req.method === "POST" && p === "/api/pi-auto") return send(res, 200, { piAuto: setPiAuto(DATA, (await body(req)).on === true) });
+	if (req.method === "POST" && p === "/api/omp-auto") return send(res, 200, { ompAuto: setOmpAuto(DATA, (await body(req)).on === true) });
 	if (req.method === "POST" && p === "/api/dsh-profile") return send(res, 200, saveDshProfile(await body(req)));
 	if (req.method === "POST" && p === "/api/persona") return send(res, 200, savePersona(await body(req)));
 	if (req.method === "DELETE" && p === "/api/persona") return send(res, 200, deletePersona(url.searchParams.get("id")));
@@ -144,6 +156,7 @@ async function state(withVersions) {
 		dshAll: DSH_PROFILES,
 		modes: MODES,
 		piAuto: st.piAuto === true,
+		ompAuto: st.ompAuto === true,
 		shimDir: shimStatus()[0]?.dir ?? null,
 		slashes: slashes,
 	};
@@ -228,7 +241,8 @@ function savePersona(payload) {
 function deletePersona(id) {
 	if (!id) return { error: "缺少 id" };
 	if (store.list().length <= 1) return { error: "至少保留一个 persona" };
-	store.remove(id); // remove 内部会处理“删的就是 active”的指针改道
+	if (!store.read(id)) return { error: "找不到这个 persona" };
+	if (!store.remove(id)) return { error: "非法 persona id" };
 	return { ok: true, active: store.activeId() };
 }
 
@@ -251,6 +265,7 @@ function usePersona(payload) {
 
 /** 全局总开关：所有 harness × 选定通道一次折腾完（= `agent-purge 注册 --all` / `disarm --all`）*/
 function applyArmAll(payload) {
+	if (!payload.action) return { error: "缺少 action" };
 	const { action } = payload;
 	const channel = payload.channel ?? "all";
 	const verb = verbOf(action);
@@ -310,6 +325,7 @@ function verbOf(action) {
 
 /** 裸命令接管（shim）、/purge（slash）、常驻（install）：Web 上一个开关全部搞定 */
 function applyArm(payload) {
+	if (!payload.action) return { error: "缺少 action" };
 	const { harness, channel, action } = payload;
 	const id = payload.persona ?? store.activeId();
 	if (!store.read(id)) return { error: "没有可用 persona" };
@@ -363,21 +379,57 @@ function armChannel(harness, channel, verb, id) {
 	return { error: `未知通道: ${channel}` };
 }
 
-const send = (res, code, obj) => res.writeHead(code, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(obj));
+const send = (res, code, obj) =>
+	res.writeHead(code, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }).end(JSON.stringify(obj));
 const html = (res) =>
 	res
 		.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" })
 		.end(readFileSync(join(ROOT, "web", "ui.html"), "utf8"));
 
+function isMutating(method) {
+	return method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
+}
+
+/** 浏览器跨站请求会带 Origin；curl/脚本没有，放行。有 Origin 就必须和 Host 同源。 */
+function sameOrigin(req) {
+	// 先看浏览器声明的跨站属性：没有 Origin 的跨站请求（部分 fetch 场景）也要挡住
+	const site = req.headers["sec-fetch-site"];
+	if (site && site !== "same-origin" && site !== "none") return false;
+	const origin = req.headers.origin;
+	if (!origin) return true;
+	try {
+		const u = new URL(origin);
+		const loopback = u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "::1" || u.hostname === "[::1]";
+		return loopback && u.host.toLowerCase() === String(req.headers.host ?? "").toLowerCase();
+	} catch {
+		return false;
+	}
+}
+
 function body(req) {
 	return new Promise((resolve) => {
 		let raw = "";
-		req.on("data", (c) => (raw += c));
+		let size = 0;
+		let done = false;
+		const finish = (value) => {
+			if (done) return;
+			done = true;
+			resolve(value);
+		};
+		req.on("data", (c) => {
+			size += c.length;
+			// 本机也不该接无上限的 body：一个坏页面能靠大 POST 把内存吃光
+			if (size > 2 * 1024 * 1024) {
+				req.destroy();
+				return finish({});
+			}
+			raw += c;
+		});
 		req.on("end", () => {
 			try {
-				resolve(JSON.parse(raw || "{}"));
+				finish(JSON.parse(raw || "{}"));
 			} catch {
-				resolve({});
+				finish({});
 			}
 		});
 	});

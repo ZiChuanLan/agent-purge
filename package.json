@@ -23,8 +23,7 @@
     "web": "node bin/agent-purge.mjs web",
     "matrix": "node bin/agent-purge.mjs matrix",
     "detect": "node bin/agent-purge.mjs detect",
-    "test": "node magpie-plugin/selftest.mjs && node magpie-plugin/test-page.mjs && node test/harness-adapters.test.mjs",
-    "build:exe": "node scripts/build-exe.mjs",
+    "test": "node magpie-plugin/selftest.mjs && node magpie-plugin/test-page.mjs && node test/harness-adapters.test.mjs && node test/regressions.test.mjs",
     "prepack": "node -e \"require('node:fs').rmSync('personas/.build',{recursive:true,force:true})\""
   },
   "keywords": [
