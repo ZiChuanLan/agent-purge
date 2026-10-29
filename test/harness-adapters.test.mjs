@@ -278,17 +278,57 @@ try {
 			process.env.DSH_HOME = join(dir3, ".dsh");
 			const deskDir = join(dir3, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
 			const deskYml = join(dir3, ".dsh", "profiles", "desktop", "cordis.patch.yml");
+			const deskStash = join(dir3, ".dsh", "profiles", "desktop", ".agent-purge.patch.before");
+			writeFileSync(deskYml, "[]\n");
 			const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
 			assert.ok(r.error, "应该以 {error} 报错");
 			assert.equal(existsSync(deskDir), false, "失败后 desktop 插件目录残留");
-			assert.equal(existsSync(deskYml), false, "失败后 desktop patch 残留");
+			assert.equal(readFileSync(deskYml, "utf8"), "[]\n", "失败后 desktop patch 没回原样");
+			assert.equal(existsSync(deskStash), false, "失败后 stash 残留（回滚没盖住 stash）");
 		} finally {
 			process.env.DSH_HOME = savedProfile;
 			rmSync(dir3, { recursive: true, force: true });
 		}
 	});
-	await t("空文件 / `[]` / 不存在：卸载后字节还原", () => {
-		for (const content of [null, "", "[]\n"]) {
+	await t("回滚：原本没有 patch 文件就删掉，且不碰既有插件目录", () => {
+		const savedProfile = process.env.DSH_HOME;
+		const dir5 = mkdtempSync(join(tmpdir(), "ap-rollback2-"));
+		try {
+			const webProfile = join(dir5, ".dsh", "profiles", "web");
+			mkdirSync(webProfile, { recursive: true });
+			writeFileSync(join(webProfile, "package.json"), '{"name":"dsh-profile-web"}');
+			mkdirSync(join(dir5, ".dsh", "profiles", "desktop"), { recursive: true });
+			writeFileSync(join(dir5, ".dsh", "profiles", "desktop", "package.json"), '{"name":"dsh-profile-desktop"}');
+			writeFileSync(join(webProfile, "node_modules"), "not a dir");
+			process.env.DSH_HOME = join(dir5, ".dsh");
+			const deskDir = join(dir5, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
+			const deskYml = join(dir5, ".dsh", "profiles", "desktop", "cordis.patch.yml");
+			const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
+			assert.ok(r.error, "应该以 {error} 报错");
+			assert.equal(existsSync(deskDir), false, "失败后 desktop 插件目录残留");
+			assert.equal(existsSync(deskYml), false, "原本没这个 patch，回滚后却留下了");
+		} finally {
+			process.env.DSH_HOME = savedProfile;
+			rmSync(dir5, { recursive: true, force: true });
+		}
+	});
+	await t("重装失败：已经装好的 profile 不能被回滚删掉（否则 patch 指向不存在的包）", () => {
+		persist.uninstall("dsh");
+		persist.install("dsh", { root: DATA, active: store.refreshActive() });
+		const deskDir = join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
+		assert.equal(existsSync(deskDir), true, "前置：先得装好一份");
+		const webProfile = join(dir, ".dsh", "profiles", "web");
+		mkdirSync(webProfile, { recursive: true });
+		writeFileSync(join(webProfile, "package.json"), '{"name":"dsh-profile-web"}');
+		rmSync(join(webProfile, "node_modules"), { recursive: true, force: true });
+		writeFileSync(join(webProfile, "node_modules"), "not a dir");
+		const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
+		assert.ok(r.error, "应该以 {error} 报错");
+		assert.equal(existsSync(deskDir), true, "回滚把之前就装好的 desktop 目录删了");
+		persist.uninstall("dsh");
+		rmSync(join(webProfile, "node_modules"), { force: true });
+	});
+	await t("空文件 / `[]` / 不存在：卸载后字节还原", () => {		for (const content of [null, "", "[]\n"]) {
 			persist.uninstall("dsh");
 			rmSync(yml("desktop"), { force: true });
 			if (content !== null) writeFileSync(yml("desktop"), content);
