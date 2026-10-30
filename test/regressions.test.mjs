@@ -273,6 +273,54 @@ await t("只有 web profile 时 persist.install(dsh).file 真的存在（issue #
 	uninstallTarget("dsh");
 	assert.equal(readFileSync(dshPatch, "utf8"), userPatch);
 });
+await t("disarm dsh --all：只撤 dsh，别的 harness 不受牵连，总电源关掉", () => {
+	const runCli = (...args) =>
+		spawnSync(process.execPath, [join(process.cwd(), "bin", "agent-purge.mjs"), ...args], {
+			encoding: "utf8",
+			env: { ...process.env, AGENT_PURGE_HOME: DATA },
+		});
+	mkdirSync(join(DATA, "personas"), { recursive: true });
+	writeFileSync(join(DATA, "personas", "alpha.md"), "测试人设\n");
+	const statePath = join(DATA, "state.json");
+	const savedState = existsSync(statePath) ? readFileSync(statePath, "utf8") : null; // 别把总电源关着留给后面的用例
+	writeFileSync(
+		statePath,
+		JSON.stringify({ persona: "alpha", default: { harness: "codex", mode: "replace" }, armed: { codex: ["install"], dsh: ["install"] } }, null, 2),
+	);
+	try {
+		const r = runCli("disarm", "dsh", "--all");
+		assert.equal(r.status, 0, r.stderr);
+		const st = JSON.parse(readFileSync(statePath, "utf8"));
+		assert.equal(st.default.mode, "off", "总电源没关");
+		assert.ok(!(st.armed?.dsh ?? []).includes("install"), "dsh 没撤干净");
+		assert.ok((st.armed?.codex ?? []).includes("install"), "把没点名的 harness 一起撤了");
+		assert.match(r.stdout, /总电源/, "没告诉用户总电源被动了");
+	} finally {
+		if (savedState === null) rmSync(statePath, { force: true });
+		else writeFileSync(statePath, savedState);
+	}
+});
+await t("没设过默认 harness 时，disarm dsh --all 也能真把总电源关掉（issue #5）", () => {
+	const runCli = (...args) =>
+		spawnSync(process.execPath, [join(process.cwd(), "bin", "agent-purge.mjs"), ...args], {
+			encoding: "utf8",
+			env: { ...process.env, AGENT_PURGE_HOME: DATA },
+		});
+	const statePath = join(DATA, "state.json");
+	const savedState = existsSync(statePath) ? readFileSync(statePath, "utf8") : null;
+	writeFileSync(statePath, JSON.stringify({ persona: "alpha", default: null, armed: { dsh: ["install"] } }));
+	try {
+		const r = runCli("disarm", "dsh", "--all");
+		assert.equal(r.status, 0, r.stderr);
+		assert.equal(JSON.parse(readFileSync(statePath, "utf8")).default?.mode, "off", "没默认 harness 时总电源没关上");
+		// 关掉之后，点名启动也必须原样跑：这才是“总电源”应有的效果
+		const dry = runCli("dsh", "--dry-run");
+		assert.match(`${dry.stdout}${dry.stderr}`, /总电源关着/, "总电源关了却还在注入");
+	} finally {
+		if (savedState === null) rmSync(statePath, { force: true });
+		else writeFileSync(statePath, savedState);
+	}
+});
 await t("--layer 被识别且不传给 pi，--ask= 会被识别", () => {
 	const run = (...args) =>
 		spawnSync(process.execPath, [join(process.cwd(), "bin", "agent-purge.mjs"), ...args], {

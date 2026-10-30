@@ -99,6 +99,33 @@ agent-purge uninstall <h>    # 摘掉，按字节还原
 
 dsh 是唯一有多个形态的：desktop / web / headless 共用一套 cordis 插件，装在各自 profile 的 `node_modules/agent-purge/`，并在 `cordis.patch.yml` 里 `- insert` 挂上，不改 `app.asar`。装完重启一次，之后热生效；三个形态还能在 Web 面板分别勾选。
 
+### 三个通道与总电源（arm / disarm）
+
+一家 harness 有三条能注入的入口，`arm` 默认三条全开：
+
+| 通道 | 管什么 | 只想做这一项 |
+|---|---|---|
+| `shim` | PATH 最前放同名壳，**裸敲** `codex` / `dsh` 也经 agent-purge 启动 | `arm <h> --shim` |
+| `install` | 写 harness 自己的配置/插件，**别人启动的、GUI 里点开的**也生效 | `arm <h> --install` |
+| `slash` | 会话内 `/purge` 热切换（只有 pi / omp / dsh 有 sys 层热切） | `arm <h> --slash` |
+
+```bash
+agent-purge arm <h>            # 三条全开（= 注册）
+agent-purge disarm <h>         # 撤掉这一家的三条通道
+agent-purge arm --all          # 所有支持的 harness 全开 + 总电源打开
+agent-purge disarm --all       # 所有 harness 全撤 + 总电源关掉（"别管我"）
+```
+
+**`--all` 是总电源，不是"全部通道"。** 它改的是 `state.json` 里的 `default.mode`：
+
+- `default.mode = off` 时，**所有**入口都不注入——包括裸敲 `agent-purge`、`agent-purge <h>`、PATH 壳；
+- `disarm <h>` 只撤那家的三个通道，**不动总电源**，所以撤完 `agent-purge dsh` 仍然注入——
+  这就是"明明 disarm 了却还在改提示词"的来源；
+- 只想彻底关掉某一家：`agent-purge disarm dsh --all`（撤 dsh 三条通道 + 关总电源，别的 harness 不动）；
+  `arm` 会把上次的 mode 还回去。
+
+改完用 `agent-purge status` 复核：每家的 `shim / slash / install` 三个格子 + 当前 mode 一张表。
+
 ## magpie 网关插件（可选）
 
 [magpie](https://github.com/yetone/magpie) 把各家 agent 的请求收进本地网关。挂上这个插件后，**凡是经过网关的请求**（Claude Code、Codex、OpenCode、pi…）的 system 段都按 agent-purge 的当前人设改写——不用逐个 harness 装，换人设也不用重启 magpie。

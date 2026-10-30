@@ -379,21 +379,25 @@ async function armCmd(verb, rest) {
 
 	const supported = Object.keys(matrix.harnesses).filter((h) => matrix.harnesses[h].class !== "unsupported");
 	const namedTarget = rest.filter((x) => !x.startsWith("-"));
-	const targets = rest.includes("--all") || !namedTarget.length ? supported : namedTarget;
+	// 点了名的只动那家：`--all` 只管总电源，不再悄悄把别的 harness 一起撤（issue #5）
+	const targets = namedTarget.length ? namedTarget : supported;
 
 	// 全局 --all 就是总电源：撤的时候必须把 default.mode 置 off，
 	// 否则 `agent-purge <h>` 这条入口照样注入（实测：关了总开关还能接管，就是这里漏的）。
 	// 开的时候把上次的 mode 还回去。单家操作不动 mode。
+	// 没设过默认 harness 时也要能关：launch() 在 default 为空时会回落成 replace。
 	if (rest.includes("--all")) {
 		const { state: cur } = loadState(DATA);
-		const m = cur.default?.mode ?? "off";
-		if (verb === "disarm" && m !== "off" && cur.default?.harness) {
-			setDefault(DATA, { harness: cur.default.harness, mode: "off" });
-			patchState(DATA, { prevMode: m });
+		const m = cur.default?.mode ?? null; // null = 从没设过，launch() 会回落成 replace
+		const h = cur.default?.harness ?? null;
+		if (verb === "disarm" && m !== "off") {
+			patchState(DATA, { default: { harness: h, mode: "off" }, prevMode: m ?? "replace" });
+			console.log(`总电源：mode ${m ?? "(未设，实际按 replace)"} → off（裸敲 agent-purge / agent-purge <h> 都不再注入；arm --all 还回去）`);
 		}
-		if (verb === "arm" && m === "off" && cur.default?.harness) {
+		if (verb === "arm" && cur.default && m === "off") {
 			const back = MODES.includes(cur.prevMode) && cur.prevMode !== "off" ? cur.prevMode : "replace";
-			setDefault(DATA, { harness: cur.default.harness, mode: back });
+			patchState(DATA, { default: { harness: h, mode: back } });
+			console.log(`总电源：mode off → ${back}`);
 		}
 	}
 
@@ -540,7 +544,7 @@ async function statusCmd() {
 		const slashes = slashMod.slashStatus(DATA);
 
 		console.log(`persona  ${state.persona ?? "(未设置)"}`);
-		console.log(`default  ${state.default ? `${state.default.harness} · ${state.default.mode}` : "(未设置)"}   裸敲 agent-purge 用它`);
+		console.log(`default  ${state.default ? `${state.default.harness ?? "(未选默认)"} · ${state.default.mode}` : "(未设置)"}   裸敲 agent-purge 用它`);
 		console.log(`state    ${join(DATA, "state.json")}`);
 		console.log("");
 		console.log("harness     shim   slash  install   /purge层  常驻落点");
@@ -744,7 +748,11 @@ function help() {
    agent-purge arm <h> --shim               只做裸命令接管（写 PATH 最前）
    agent-purge arm <h> --install            只做配置文件常驻
    agent-purge arm <h> --slash              只做会话内 /purge
-   agent-purge disarm <h>|--all             以上全部撤掉
+   agent-purge disarm <h>|--all             以上全部撤掉；不带 <h> 就是所有 harness
+
+   注：--all 是总电源（state.json 的 default.mode）。带 <h> 时只撤那家，
+       但同样把总电源关掉——不然裸敲 agent-purge、agent-purge <h> 照样注入。
+       彻底别管我：agent-purge disarm --all
 
 ④ 看
    agent-purge status             一张表：每家的 shim / slash / install / 能做什么
