@@ -32,6 +32,12 @@ npm i -g agent-purge     # 或 npx agent-purge web
 
 要求 Node ≥ 20，零依赖。
 
+---
+提示词仓库：
+https://github.com/ZiChuanLan/some-magic
+
+---
+
 **用 magpie 网关？** 插件不在 npm 包里，在仓库的 `magpie-plugin/` 子目录——不要指向仓库根（根 `package.json` 是 CLI，只有 `bin`，magpie 会拒绝）：
 
 ```bash
