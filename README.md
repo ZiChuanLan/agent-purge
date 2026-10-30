@@ -33,8 +33,7 @@ npm i -g agent-purge     # 或 npx agent-purge web
 要求 Node ≥ 20，零依赖。
 
 ---
-提示词仓库：
-https://github.com/ZiChuanLan/some-magic
+
 
 ---
 
@@ -69,6 +68,9 @@ agent-purge pi --persona <id>  # 只这一轮用别的
 ```
 
 首次运行会在 `personas/` 下生成 `neutral.md` 起步模板。
+
+人设仓库：
+https://github.com/ZiChuanLan/some-magic
 
 ## 支持情况
 
