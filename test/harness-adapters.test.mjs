@@ -1,3 +1,4 @@
+import { isolate } from "./isolate.mjs";
 // dsh / opencode2 常驻接管的回归测试。
 // 走的是 shipped 控制面（lib/persist.mjs → lib/dsh.mjs / 插件生成），不是测试内重实现。
 // 全程在临时 HOME 里跑，结束时恢复原环境变量并删目录。
@@ -21,13 +22,14 @@ const t = async (name, fn) => {
 
 const dir = mkdtempSync(join(tmpdir(), "ap-harness-"));
 const saved = { ...process.env };
+isolate(dir);
 const DATA = join(dir, ".agent-purge");
 process.env.USERPROFILE = dir;
 process.env.HOME = dir;
 process.env.AGENT_PURGE_HOME = DATA;
 process.env.DSH_HOME = join(dir, ".dsh");
 // dsh 首次启动会给每个形态建 profile（带 package.json）；插件只往 dsh 建过的 profile 里写
-for (const p of ["desktop", "web", "headless"]) {
+for (const p of ["desktop", "web", "headless", "sdk"]) {
 	mkdirSync(join(dir, ".dsh", "profiles", p), { recursive: true });
 	writeFileSync(join(dir, ".dsh", "profiles", p, "package.json"), `{"name":"dsh-profile-${p}","private":true}`);
 }
@@ -48,7 +50,7 @@ const yml = (p) => join(dir, ".dsh", "profiles", p, "cordis.patch.yml");
 
 try {
 	console.log("\ndsh 常驻");
-	await t("install 生成三个 profile 的插件包", () => {
+	await t("install 覆盖已有 desktop/web/headless/sdk profile", () => {
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
 		for (const p of DSH_PROFILES) {
 			assert.ok(existsSync(join(dir, ".dsh", "profiles", p, "node_modules", RESIDENT, "index.js")), `${p} 缺 index.js`);
@@ -79,7 +81,7 @@ try {
 			assert.equal(readFileSync(yml("desktop"), "utf8"), before, `还原失败：${JSON.stringify(before)}`);
 		}
 	});
-	await t("uninstall 清掉三个 profile 的插件目录", () => {
+	await t("uninstall 清掉全部已知 profile 的插件目录", () => {
 		for (const p of DSH_PROFILES) {
 			assert.ok(!existsSync(join(dir, ".dsh", "profiles", p, "node_modules", RESIDENT)), `${p} 还留着`);
 		}
@@ -102,7 +104,10 @@ try {
 		assert.doesNotMatch(src, /experimental\.chat\.system\.transform/);
 	});
 	await t("插件读 active.md", () => {
-		assert.match(readFileSync(v2file(), "utf8"), /personas[\/\\]active\.md/);
+		const source = readFileSync(v2file(), "utf8");
+		const literal = source.match(/const ACTIVE = ("[^\n]+");/);
+		assert.ok(literal);
+		assert.equal(JSON.parse(literal[1]), join(DATA, "personas", "active.md"));
 	});
 	await t("换 persona 后同一插件读到新正文（热切路径）", () => {
 		store.setActive("beta");
@@ -136,7 +141,9 @@ try {
 		plugin.apply(ctx);
 		const asm = await ctx.systemPrompt.assemble();
 		assert.match(asm.sections[0].text, /正文 B/);
-		assert.equal(asm.sections.length, 1);
+		// replace：人设在前，宿主 section 保留（只删“自称 + 点名厂商”的行）
+		assert.equal(asm.sections.length, 2);
+		assert.equal(asm.sections[1].text, "HOST");
 	});
 	await t("armed 被清掉后同一插件停止注入（磁盘卸载后的残存回调）", async () => {
 		writeState({}, "replace");
@@ -348,6 +355,18 @@ try {
 		writeFileSync(join(sess, "index.js"), "export default {};");
 		persist.uninstall("dsh");
 		assert.equal(existsSync(sess), false, "一次性插件残留没清");
+	});
+	await t("卸载保留用户修改或新增的 DSH 插件文件；重装不覆盖外部编辑", () => {
+		persist.install("dsh", { root: DATA, active: store.refreshActive() });
+		const plugin = join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
+		const edited = readFileSync(join(plugin, "index.js"), "utf8") + "\n// user change\n";
+		writeFileSync(join(plugin, "index.js"), edited);
+		writeFileSync(join(plugin, "notes.txt"), "PRIVATE NOTES");
+		assert.match(persist.install("dsh", { root: DATA, active: store.refreshActive() }).error, /外部修改/);
+		persist.uninstall("dsh");
+		assert.equal(existsSync(plugin), false);
+		assert.equal(readFileSync(`${plugin}.disabled-by-agent-purge/index.js`, "utf8"), edited);
+		assert.equal(readFileSync(`${plugin}.disabled-by-agent-purge/notes.txt`, "utf8"), "PRIVATE NOTES");
 	});
 	await t("caps 认得两家的热切", async () => {
 		const caps = await import("../lib/caps.mjs");

@@ -1,3 +1,4 @@
+import { isolate } from "./isolate.mjs";
 // 回归：TOML 顶层块、persona id 防穿越、opencode append、omp /purge 生成。
 // 都在临时 HOME 里跑，不碰真实配置。
 import assert from "node:assert/strict";
@@ -21,10 +22,12 @@ const t = async (name, fn) => {
 
 const dir = mkdtempSync(join(tmpdir(), "ap-regress-"));
 const saved = { ...process.env };
+isolate(dir);
 const DATA = join(dir, ".agent-purge");
 process.env.USERPROFILE = dir;
 process.env.HOME = dir;
 process.env.AGENT_PURGE_HOME = DATA;
+for (const key of ["AGENT_PURGE_MODE", "AGENT_PURGE_PERSONA", "AGENT_PURGE_FORCE"]) delete process.env[key];
 process.env.OMP_HOME = join(dir, ".omp");
 process.env.CODEX_HOME = join(dir, ".codex");
 process.env.DSH_HOME = join(dir, ".dsh");
@@ -100,35 +103,54 @@ await t("路径分隔符 / .. / 保留名一律拒绝", () => {
 });
 
 console.log("opencode");
-await t("append 模式生成 push，不是整段替换", () => {
+await t("append 回调保留宿主并追加一次，重复回调不叠加", async () => {
 	const cwd = join(dir, "proj");
 	mkdirSync(cwd, { recursive: true });
-	const b = backends.opencode({ personaText: "PERSONA", mode: "append", cwd, args: [] });
+	const b = backends.opencode({ personaText: "PERSONA", mode: "append", cwd, args: [], root: DATA });
+	const { createLaunch } = await import("../lib/launch.mjs");
+	writeFileSync(join(DATA, "personas", "temporary.md"), "PERSONA");
+	const lease = createLaunch(DATA, "opencode", { persona: "temporary", mode: "append" });
 	try {
 		b.setup();
+		lease.publish(process.pid, Date.now() - process.uptime() * 1000);
+		process.env.AGENT_PURGE_LAUNCH = lease.token;
 		const src = readFileSync(join(cwd, ".opencode", "plugin", "agent-purge.ts"), "utf8");
-		assert.match(src, /output\.system\.push/);
-		assert.doesNotMatch(src, /splice\(0, output\.system\.length/);
+		const { AgentPurge } = await import(`data:text/javascript;base64,${Buffer.from(src).toString("base64")}`);
+		const hook = (await AgentPurge())["experimental.chat.system.transform"];
+		const output = { system: ["HOST", "tool instructions"] };
+		await hook({}, output);
+		assert.deepEqual(output.system, ["HOST", "tool instructions", "PERSONA"]);
+		await hook({}, output);
+		assert.deepEqual(output.system, ["HOST", "tool instructions", "PERSONA"]);
 	} finally {
+		delete process.env.AGENT_PURGE_LAUNCH;
+		lease.close();
 		b.cleanup();
+		rmSync(join(DATA, "personas", "temporary.md"), { force: true });
 	}
 });
 
 console.log("omp /purge");
-await t("生成扩展、安装状态可见、卸载干净", () => {
+await t("生成扩展、三种模式运行正确、安装状态可见、卸载干净", async () => {
 	const r = installSlash("omp", DATA, { personaId: "alpha", personaBody: "正文 A" });
 	assert.ok(r.file && existsSync(r.file));
 	const src = readFileSync(r.file, "utf8");
 	assert.match(src, /before_agent_start/);
 	assert.match(src, /registerCommand\("purge"/);
-	assert.match(src, /ompAuto/);
-	assert.match(src, /if \(mode === "strict"\) return \{ systemPrompt: \[cache\.body\] \};/);
-	assert.match(src, /if \(mode === "append"\) return \{ systemPrompt: \[\.\.\.hostBlocks, cache\.body\] \};/);
-	assert.match(src, /if \(hostBlocks\.some\(/);
-	assert.match(src, /const projectBlocks = hostBlocks\.filter/);
+	const { default: extension } = await import(`data:text/javascript;base64,${Buffer.from(src).toString("base64")}`);
+	const hooks = {};
+	extension({ on: (name, fn) => hooks[name] = fn, registerCommand() {} });
+	const host = ["You are an AI assistant.\nTOOL RULES", "PROJECT RULES"];
+	for (const mode of ["strict", "replace", "append"]) {
+		writeFileSync(join(DATA, "state.json"), JSON.stringify({ persona: "alpha", default: { mode }, armed: { omp: ["slash"] }, ompAuto: true }));
+		const result = await hooks.before_agent_start({ systemPrompt: host });
+		const expected = mode === "strict" ? ["正文 A"] : mode === "append" ? [...host, "正文 A"] : ["正文 A", "TOOL RULES", "PROJECT RULES"];
+		assert.deepEqual(result.systemPrompt, expected);
+	}
 	assert.ok(slashStatus(DATA).find((s) => s.id === "omp")?.installed);
 	uninstallSlash("omp", DATA);
 	assert.equal(existsSync(r.file), false);
+	writeFileSync(join(DATA, "state.json"), JSON.stringify({ persona: "alpha", default: { harness: "pi", mode: "replace" }, armed: {} }));
 });
 
 console.log("dsh 插件");
@@ -330,7 +352,7 @@ await t("--layer 被识别且不传给 pi，--ask= 会被识别", () => {
 	const a = run("pi", "--layer", "user", "--dry-run");
 	assert.equal(a.status, 0, a.stderr);
 	assert.match(a.stdout, /\[layer\]/);
-	assert.match(a.stdout, /\[cmd\] pi$/m);
+	assert.match(a.stdout, /\[cmd\] pi(?: -e [^\r\n]*extension-pi\.mjs)?$/m);
 	const b = run("omp", "--ask=hi", "--dry-run");
 	assert.equal(b.status, 0, b.stderr);
 	assert.match(b.stdout, /\[cmd\] omp -p/);
@@ -345,6 +367,29 @@ await t("--layer 被识别且不传给 pi，--ask= 会被识别", () => {
 	const e = run("omp", "--no-extensions", "--dry-run");
 	assert.equal(e.status, 0, e.stderr);
 	assert.match(e.stdout, /--system-prompt/);
+	const append = run("omp", "--mode", "append", "--dry-run");
+	assert.equal(append.status, 0, append.stderr);
+	assert.doesNotMatch(append.stdout, /--(?:append-)?system-prompt/);
+	const direct = run("omp", "--mode", "append", "--no-extensions", "--dry-run");
+	assert.equal(direct.status, 0, direct.stderr);
+	assert.match(direct.stdout, /--append-system-prompt/);
+});
+
+await t("落盘类 launch 指向 personas/active.md：不经 agent-purge 直接重启也拿到当前人设", () => {
+	const run = (...args) =>
+		spawnSync(process.execPath, [join(process.cwd(), "bin", "agent-purge.mjs"), ...args], {
+			encoding: "utf8",
+			env: { ...process.env, AGENT_PURGE_HOME: DATA },
+		});
+	const r = run("codex", "--dry-run");
+	assert.equal(r.status, 0, r.stderr);
+	assert.match(r.stdout, /model_instructions_file=".*personas\/active\.md"/, "codex 还指向因人设变化的 .build/<id>.md");
+	// 显式 --persona 选的不是 active 那个：必须指向它自己，不能被 active.md 顶掉
+	writeFileSync(join(DATA, "personas", "beta.md"), "---\nid: beta\n---\n正文 B\n");
+	const b = run("codex", "--persona", "beta", "--dry-run");
+	assert.equal(b.status, 0, b.stderr);
+	assert.match(b.stdout, /\.build[\\/]beta\.md/, "--persona 被 active.md 顶掉了");
+	assert.doesNotMatch(b.stdout, /active\.md/);
 });
 
 console.log(fails.length ? `\n✗ ${fails.length} 失败，${pass} 通过` : `\n✓ 全部通过：${pass} 通过，0 失败`);

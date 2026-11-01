@@ -1,0 +1,73 @@
+name: release-check
+
+# Build and acceptance only. No tags, GitHub Releases or npm publish permissions.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/release-check.yml'
+      - 'packaging/**'
+      - 'scripts/**'
+      - 'package*.json'
+      - 'bin/**'
+      - 'lib/**'
+      - 'web/**'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-artifacts:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.4'
+      - run: npm ci --ignore-scripts
+      - run: npm run check:repo
+      - name: Install Windows build tools
+        shell: pwsh
+        run: |
+          choco install mingw innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Toolchain installation failed' }
+          $mingw = 'C:\ProgramData\chocolatey\lib\mingw'
+          $gcc = Get-ChildItem -LiteralPath $mingw -Filter gcc.exe `
+            -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($gcc) { $gcc.DirectoryName >> $env:GITHUB_PATH }
+          'C:\ProgramData\chocolatey\bin' >> $env:GITHUB_PATH
+      - run: npm test
+      - run: npm run test:package
+      - run: npm run build:setup
+      - run: npm run build:exe
+      - run: npm run test:artifacts
+      - name: Clean-runner install, run, uninstall and preserve user data
+        shell: pwsh
+        run: ./scripts/check-installer.ps1
+      - run: npm run release:checksums
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-release-candidate
+          path: |
+            dist/agent-purge-*.zip
+            dist/agent-purge-*-setup.exe
+            dist/agent-purge.exe
+            dist/standalone-manifest.json
+            dist/SHA256SUMS.txt
+            out/package/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-installer-logs
+          path: |
+            ${{ runner.temp }}/ap-installer-*/*.log
+            ${{ runner.temp }}/ap-installer-*/acceptance.json
+          if-no-files-found: ignore

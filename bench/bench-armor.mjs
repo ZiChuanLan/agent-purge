@@ -34,14 +34,13 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { installCrashHandlers, recover as recoverSwaps, swapFile as journalSwap } from "./lib/restore.mjs";
+import { installCrashHandlers, recover as recoverSwaps, swapFile as journalSwap } from "../lib/restore.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const HOME = os.homedir();
 const APPDATA = process.env.APPDATA || path.join(HOME, "AppData", "Roaming");
 const LOCALAPPDATA = process.env.LOCALAPPDATA || path.join(HOME, "AppData", "Local");
 const NODE = process.execPath;
-if (!process.env.MG_KEY) { console.error('[bench] 需要 MG_KEY 环境变量（网关 key）'); process.exit(1); }
 
 const MG = {
   base: process.env.MG_BASE || "",
@@ -52,6 +51,9 @@ const MG = {
 
 // ---------------------------------------------------------------- args ----
 function opt(name, def) {
+  const eqPrefix = "--" + name + "=";
+  const eqArg = process.argv.find((a) => a.startsWith(eqPrefix));
+  if (eqArg !== undefined) return eqArg.slice(eqPrefix.length);
   const i = process.argv.indexOf("--" + name);
   if (i === -1) return def;
   const v = process.argv[i + 1];
@@ -74,8 +76,19 @@ const CODEX_BASE = String(opt("codex-base", "")); // 指定后 codex 走本地�
 const REBUILD = !!opt("rebuild", false); // 只根据已有 matrix.json 重生报告，不跑测量
 const RESCORE = !!opt("rescore", false); // 重读 runs/*.txt 原文，用当前评分器重判（分数升级不丢历史数据）
 
+// dry-run / rescore 不访问上游，不再强制要 key
+if (!DRY && !RESCORE && !process.env.MG_KEY) {
+  console.error('[bench] 需要 MG_KEY 环境变量（网关 key）');
+  process.exit(1);
+}
+
 // ------------------------------------------------------------- persona ----
-const personaRaw = fs.readFileSync(personaPath, "utf8");
+let personaRaw = "";
+try {
+  personaRaw = fs.readFileSync(personaPath, "utf8");
+} catch (e) {
+  if (!DRY && !RESCORE) throw e;
+}
 const token = "ARMOR-" + crypto.randomBytes(3).toString("hex").toUpperCase();
 const persona = CANARY
   ? personaRaw + `\n\n----\n【实测格式要求】若以上设定已完整送达你，则在本次回复的最后一行原样输出标记：${token}`
@@ -115,7 +128,7 @@ const PROBE_CRACK_BARE = [
 const PROBE = TASK === "crack" ? PROBE_CRACK : TASK === "crack-bare" ? PROBE_CRACK_BARE : PROBE_IDENTITY;
 const USER_PROMPT = persona + "\n\n----------\n" + PROBE; // user 层：人设前置
 
-const masked = (s) => String(s).split(MG.key).join("1234****");
+const masked = (s) => (MG.key ? String(s).split(MG.key).join("1234****") : String(s));
 // 剔除 CLI 回显的 prompt（codex/omp 等会把 -p 内容打到 stderr，
 // 否则评分器会把题面里的「定位/补丁」当成模型自己给的方案 → 假 E）
 const promptScrub = (s) => String(s || "").split(PROBE).join("").split(USER_PROMPT).join("").split(persona).join("");
@@ -473,7 +486,8 @@ disable_codebase_upload = true
   const modelsJson = path.join(agentDir, "models.json");
   const prepare = () => {
     const tds = [];
-    let yml = fs.existsSync(modelsYml) ? fs.readFileSync(modelsYml, "utf8") : "providers: {}\n";
+    let yml = fs.existsSync(modelsYml) ? fs.readFileSync(modelsYml, "utf8") : "providers:\n";
+    if (yml.trim() === "providers: {}") yml = "providers:\n";
     yml = yml.trimEnd() + `
   armormg: 
     api: openai-completions
@@ -635,8 +649,6 @@ disable_codebase_upload = true
 // ============================== 静态结论行 ==============================
 const STATIC = [
   { id: "antigravity", name: "antigravity (Google 1.23.x)", reason: "无 headless 入口（GUI）；身份句在 language_server.exe 内，改 prompt 需二进制补丁且需 GUI 端到端验证" },
-  { id: "qoder", name: "Qoder（阿里）", reason: "系统提示词在服务端；客户端 asar 无身份句/无 provider 分支 → 客户端不可注入" },
-  { id: "workbuddy", name: "WorkBuddy", reason: "同上（服务端 prompt）；客户端只有规则文件层（AGENTS.md 等上下文，非身份层）" },
 ];
 
 // ------------------------------------------------------------ 执行 ----

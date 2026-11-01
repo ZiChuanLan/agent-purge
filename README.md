@@ -1,235 +1,256 @@
+<div align="center">
+
 # agent-purge
 
-<a href="https://trendshift.io/repositories/321425?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-321425" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/321425/daily?language=JavaScript" alt="ZiChuanLan%2Fagent-purge | Trendshift" width="250" height="55"/></a>
+**一份人设，统一管理多个 coding agent。**
 
 [![npm](https://img.shields.io/npm/v/agent-purge)](https://www.npmjs.com/package/agent-purge)
 [![stars](https://img.shields.io/github/stars/ZiChuanLan/agent-purge)](https://github.com/ZiChuanLan/agent-purge/stargazers)
 [![license](https://img.shields.io/npm/l/agent-purge)](LICENSE)
 
-一份系统提示词，喂给多个 coding agent。支持替换（replace）、只发人设（strict）、追加（append）、清空（off）四种模式，可热切换，全程可逆。
+<p>
+  <a href="https://trendshift.io/repositories/321425?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-321425" target="_blank" rel="noopener noreferrer">
+    <img src="https://trendshift.io/api/badge/trendshift/repositories/321425/daily?language=JavaScript" alt="ZiChuanLan/agent-purge | Trendshift" width="250" height="55"/>
+  </a>
+</p>
 
+[快速开始](#快速开始) · [人设与模式](#人设与模式) · [应用范围](#应用范围) · [支持情况](#支持情况) · [暂停与卸载](#暂停与卸载) · [免责与合规声明](#免责与合规声明)
+
+</div>
+
+agent-purge 是一个本地提示词配置工具，为 Codex、Claude Code、OpenCode、pi 等执行器提供统一的人设管理入口。你可以在 Web 控制台中配置，也可以直接通过命令行启动；不同执行器仍保留自己的工具、模型和工作流程。
+
+## 核心能力
+
+- **一份配置，多种入口**：CLI 与 Web 共用人设和状态，支持单次启动、常驻配置、会话扩展与项目规则。
+- **按执行器独立设置**：默认跟随全局，也能为某个执行器单独选择人设或模式。
+- **支持热切，也说明边界**：具备每轮回调的动态通道可在下一轮读取变更；静态入口需要新会话。
+- **变更可追溯、可撤销**：记录托管写入和恢复依据；外部修改会保留，恢复冲突明确报错。
+- **本地优先、零生产依赖**：不需要额外云端配置服务，人设与程序分开保存，升级不覆盖用户数据。
+
+## 快速开始
+
+需要 **Node.js 20+**，并先安装你要使用的 coding agent。
+
+```bash
+npm install -g agent-purge
+agent-purge web
 ```
-agent-purge web          # 本地控制台 http://127.0.0.1:7788
-agent-purge codex        # 用当前 persona 启动 codex
-agent-purge pi --ask "…" # 一次性提问
-```
 
-## 它做什么
+也可以直接使用 `npx agent-purge web`，不进行全局安装。
 
-每家 coding agent 读系统提示词的位置都不一样：有的认启动参数，有的认配置文件，有的只能靠插件改运行时对象。agent-purge 把这些入口统一成三件事：
+1. 在「人设库」编辑起步模板，或新建自己的人设。
+2. 回到「控制台」选择人设和模式，保存设置，再开启需要管理的执行器。
+3. 按执行器详情中的提示，新建会话或重新加载插件。
 
-| 通道 | 机制 | 生效范围 |
+控制台默认地址为 `http://127.0.0.1:7788`。首次打开不会自动接管所有执行器；默认启动项与应用范围分别配置。
+
+![agent-purge 控制台](docs/images/console-desktop.png)
+
+[查看窄屏布局](docs/images/console-mobile.png)
+
+<details>
+<summary>其他安装方式：Windows 安装器、便携包与无桌面环境</summary>
+
+| 形式 | 运行要求 | 适用场景 |
 |---|---|---|
-| `install` | 写入该 harness 的托管配置块（Markdown / hooks / 插件） | 常驻，别人启动也生效 |
-| `shim` | 往 PATH 前置同名小壳，转发给 `agent-purge <h>` | 裸敲命令也接管 |
-| `slash` | 会话内 `/purge on\|off\|status` | 热切换，不动磁盘 |
+| npm | Node.js 20+ | 用 npm 安装与升级 |
+| `agent-purge-<版本>-setup.exe` | Windows，外部 Node.js 20+ | 图形安装和卸载 |
+| `agent-purge-<版本>.zip` | Windows，外部 Node.js 20+ | 解压后使用 |
+| `agent-purge.exe` | Windows x64，自带运行时 | 无需另装 Node 的独立便携版 |
 
-三层都写的是同一份 `personas/<id>.md` 的正文。`--mode off` 或 Web 总开关关掉时，全部撤回到原样——不留残渣。
+下载附件以实际 [GitHub Releases](https://github.com/ZiChuanLan/agent-purge/releases) 为准；未发布的版本没有附件。请核对 SHA-256 和签名状态，未签名程序可能出现系统提示。ZIP 中的 EXE 是薄启动器，不是自带运行时的独立版。
 
-## 安装
+SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux/macOS 使用 npm 或源码入口，不能运行 Windows EXE。平台验证范围见[兼容性说明](docs/compatibility.md)。
+
+</details>
+
+## 人设与模式
+
+人设正文决定要提供给执行器的提示词；名称和说明只用于管理。首次运行会生成 `neutral` 起步模板，你可以在 Web 中直接编辑，也可以创建自己的 Markdown 文件。
 
 ```bash
-npm i -g agent-purge     # 或 npx agent-purge web
+agent-purge ls                       # 查看人设
+agent-purge use <id>                 # 切换并同步已选范围
+agent-purge mode append              # 修改全局模式
+agent-purge use <id> --for codex     # 只给 Codex 指定人设
+agent-purge use follow --for codex   # 恢复跟随全局
 ```
 
-要求 Node ≥ 20，零依赖。
+### 四种处理模式
 
+| 模式 | 行为 | 注意 |
+|---|---|---|
+| `replace`（默认） | 优先替换宿主身份行，尽量保留其他说明 | 身份识别是近似处理；无法读取宿主文本的启动入口按 strict 执行 |
+| `strict` | 用人设替换可控入口中的宿主文本 | 该入口原有说明也会移除；宿主仍可能添加额外文本 |
+| `append` | 保留宿主说明，另加一份人设 | 不替换原身份，需注意规则冲突 |
+| `off` | 停止相应入口注入 | 全局暂停与单次启动参数的作用范围不同 |
+
+**strict 不等于“模型只收到人设”。** 实际角色可能是 `system`、`developer` 或项目上下文，取决于宿主和通道。希望保留宿主说明时，可先试 `append`。
+
+<details>
+<summary>手写人设示例与存储位置</summary>
+
+将以下内容保存为 `~/.agent-purge/personas/concise.md`，然后执行 `agent-purge use concise`：
+
+```markdown
+---
+id: concise
+name: 简洁协作
+description: 中文、先结论、修改前先读代码
 ---
 
-
----
-
-**用 magpie 网关？** 插件不在 npm 包里，在仓库的 `magpie-plugin/` 子目录——不要指向仓库根（根 `package.json` 是 CLI，只有 `bin`，magpie 会拒绝）：
-
-```bash
-magpie plugin add /path/to/agent-purge/magpie-plugin
+用简体中文协作。先给结论，再给依据。
+修改代码前先阅读现有实现；不确定时明确说明。
 ```
 
-首次使用先跑一次 `agent-purge web`（打开 http://127.0.0.1:7788 的控制台，先看/选一个人设；不想开界面就用 `agent-purge ls`），它会生成 `~/.agent-purge/personas/`；再跑 `node magpie-plugin/gen-personas.mjs` 生成 Persona 页的人设清单。
+只有正文进入提示词。`description` 用于列表说明，旧键 `desc` 仍兼容；Web 编辑会保留未涉及的元数据。高级匹配、排序与数据目录配置见[使用指南](docs/usage.md#人设文件)。
 
-详见下文「magpie 网关插件（可选）」。
+也可参考维护者的 [some-magic 人设仓库](https://github.com/ZiChuanLan/some-magic)。
 
-**数据独立存放**，升级不会被覆盖：默认 `~/.agent-purge/`（Windows `C:\Users\<你>\.agent-purge\`），里面是 `state.json` 和 `personas/`。想换位置就设环境变量：
+</details>
 
-```bash
-export AGENT_PURGE_HOME=/path/to/your/data     # Windows: setx AGENT_PURGE_HOME D:\ap-data
-```
+## 应用范围
 
-旧版本（0.1.x）把数据放在包目录里，首次运行会自动搬到新家，原文件不动。
-
-## 人设
-
-`personas/<id>.md` = frontmatter + 正文。正文就是会被写进系统提示词的那一段。
-
-frontmatter 用 `description` 写「说明」（Web 列表和 `agent-purge ls` 显示的就是它）；旧的 `desc` 仍然认，不会报错。可选 `order`（排序）、`harness` / `model`（匹配用）。Web 里只改名字和说明时会保留 frontmatter 的其它键，不整段重写。
+只想临时使用，可以通过 agent-purge 启动一次，不必登记常驻通道：
 
 ```bash
-agent-purge ls                 # 列出全部 persona，标出当前匹配的
-agent-purge use <id>           # 切换当前 persona
-agent-purge pi --persona <id>  # 只这一轮用别的
+agent-purge codex --mode append
+agent-purge pi --ask "解释这段代码"
+agent-purge codex -- --help          # -- 后的参数交给宿主
 ```
 
-首次运行会在 `personas/` 下生成 `neutral.md` 起步模板。
+要让其他启动入口也读取配置，再按需选择以下通道：
 
-人设仓库：
-https://github.com/ZiChuanLan/some-magic
+| 通道 | 做什么 | 生效时机 |
+|---|---|---|
+| `install` | 写入宿主的托管配置或插件 | 静态配置需新会话；已加载动态插件下一轮读取 |
+| `shim` | 通过 PATH 中的同名命令转发启动 | 下一次从该命令启动 |
+| `slash` | 安装会话内 `/purge` 扩展 | 取决于宿主扩展和启用状态 |
+| `project` | 写入指定目录的项目规则文件 | 对应目录的新会话 |
+
+```bash
+agent-purge install codex
+agent-purge arm pi --slash
+agent-purge project on pi --dir /path/to/project
+agent-purge status
+```
+
+`arm <h>` 会尝试开启该执行器可用的常驻、命令和 slash 通道，结果逐项报告；项目通道需单独选择。同一人设经多个入口提供时可能重复，建议只开启需要的范围。
+
+**使用 magpie 网关？** 可选插件位于 `magpie-plugin/`，不是仓库根目录。安装方法和网关改写边界见 [magpie 插件说明](magpie-plugin/README.md)。
 
 ## 支持情况
 
-每个数字都是实测值：本地假 provider 抓真实请求体，不是估算。
+以下为 **2026-11-01 的请求级验证范围**，不是对所有版本的兼容承诺。
 
-| harness | 机制 | 实测版本 | 默认 system | 注入后 |
-|---|---|---|---|---|
-| `codex` | 启动参数 `-c model_instructions_file=` | 0.163.0 | 21,026 | 24 |
-| `claude` | `--system-prompt-file` + 二进制补丁清残留身份句 | 2.1.304 | 6,379 | 156 |
-| `grok` | `--system-prompt-override` | 1.0.62 | 5,146 | 21 |
-| `omp` | 原生扩展：`before_agent_start` 改写 systemPrompt 数组，会话内 `/purge` 热切；`--ask` 仍走 `--system-prompt` | 17.4.2 | 34,511 | 10,106 |
-| `hermes` | 临时 HOME 里替换 `SOUL.md` | 0.21.5 | 8,139 | 7,554 |
-| `zcode` | UserPromptSubmit hook（user 角色）+ `customSystemPrompt` | 0.16.9 | 9,359 | 9,359 |
-| `opencode` | cwd 下 `.opencode/plugin/*.ts` 原地改 `output.system` | 1.19.3 | 19,332 | 112 |
-| `opencode2` | `plugins/agent-purge-v2.ts` 的 `ctx.session.hook("context")` | 0.0.0-beta-17823 | 8,279 | 3,189 |
-| `dsh` | cordis 插件（三个 profile 各一份） | 0.2.1-rc.2 | 5,713 | 68 |
-| `pi` | 原生扩展，会话内 `/purge` | — | — | — |
-| `antigravity` | 等长替换二进制里的身份句 | 1.23.x | ≈20,498 | — |
-| `codebuddy` | `--system-prompt-file` | 2.171.0 | — | — |
-| `qoder` / `workbuddy` | 不支持（提示词在服务端） | — | — | — |
-
-`opencode` 和 `opencode2` 是两个不同的 npm 包（`opencode-ai` 1.x 与 `@opencode/cli` 2.x），插件接口完全不同，各自独立支持。
-
-`agent-purge ls` 和 Web 控制台显示的是**运行期真值**：每个 harness 有没有装、版本、注入层（SYS / USER）、三个通道各自可用性。`matrix.json` 里是静态能力表，两者冲突时以运行期为准。
-
-闭源桌面端（提示词在服务端或二进制里）只做原样启动，不做任何注入——`agent-purge <h>` 会明确打印原因，不会假装生效。
-
-### 常驻安装（install）
-
-```bash
-agent-purge install <h>      # 写进该 harness 自己的托管位置，别人启动也生效
-agent-purge uninstall <h>    # 摘掉，按字节还原
-```
-
-dsh 是唯一有多个形态的：desktop / web / headless 共用一套 cordis 插件，装在各自 profile 的 `node_modules/agent-purge/`，并在 `cordis.patch.yml` 里 `- insert` 挂上，不改 `app.asar`。装完重启一次，之后热生效；三个形态还能在 Web 面板分别勾选。
-
-### 三个通道与总电源（arm / disarm）
-
-一家 harness 有三条能注入的入口，`arm` 默认三条全开：
-
-| 通道 | 管什么 | 只想做这一项 |
+| 执行器 | 已验证版本 | 同会话热切 |
 |---|---|---|
-| `shim` | PATH 最前放同名壳，**裸敲** `codex` / `dsh` 也经 agent-purge 启动 | `arm <h> --shim` |
-| `install` | 写 harness 自己的配置/插件，**别人启动的、GUI 里点开的**也生效 | `arm <h> --install` |
-| `slash` | 会话内 `/purge` 热切换（只有 pi / omp / dsh 有 sys 层热切） | `arm <h> --slash` |
+| pi / omp | 1.4.0 / 18.14.1 | 已验证（动态扩展） |
+| OpenCode 1.x / 2.x | 1.19.5 / 2.2.5 | 已验证 |
+| DSH | 0.2.1-rc.5 | 已验证（SDK 同会话；headless/web/desktop 三形态四模式已抓） |
+| Codex / Claude Code | 0.166.0 / 2.1.316 | 启动入口已验证；热切未验证 |
+| CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口已验证；热切未验证 |
+
+首次安装或更新插件代码后，仍需重新加载宿主。**配置写入、历史测试通过、当前会话实际生效，是不同状态。**
+
+Windows 与 WSL/Linux 已执行回归，macOS 尚待实机验证。Hermes、zcode、antigravity 未计为本轮通过。请求角色、宿主残留、浏览器覆盖与已知安装问题统一记录在[兼容性与限制](docs/compatibility.md)，不以模型自称身份作为验收依据。
+
+## 暂停与卸载
+
+| 目的 | 命令 | 用户人设 |
+|---|---|---|
+| 临时暂停 / 恢复原范围 | `agent-purge pause` / `agent-purge resume` | 保留 |
+| 仅撤销一家常驻配置 | `agent-purge uninstall dsh` | 保留，其他通道不变 |
+| 撤销一家全部已选通道 | `agent-purge disarm dsh` | 保留 |
+| 撤销所有登记的接管 | `agent-purge clean` | 保留 |
+
+卸载 npm 程序时，先撤销接管，再移除程序：
 
 ```bash
-agent-purge arm <h>            # 三条全开（= 注册）
-agent-purge disarm <h>         # 撤掉这一家的三条通道
-agent-purge arm --all          # 所有支持的 harness 全开 + 总电源打开
-agent-purge disarm --all       # 所有 harness 全撤 + 总电源关掉（"别管我"）
+agent-purge clean
+npm uninstall -g agent-purge
 ```
 
-**`--all` 是总电源，不是"全部通道"。** 它改的是 `state.json` 里的 `default.mode`：
+Windows 安装器卸载也会先撤销接管并保留人设。发生恢复冲突时，保留报错指出的文件和凭据，先比较修改再处理；不要直接删除备份。历史会话中已经发送的内容无法撤回。
 
-- `default.mode = off` 时，**所有**入口都不注入——包括裸敲 `agent-purge`、`agent-purge <h>`、PATH 壳；
-- `disarm <h>` 只撤那家的三个通道，**不动总电源**，所以撤完 `agent-purge dsh` 仍然注入——
-  这就是"明明 disarm 了却还在改提示词"的来源；
-- 只想彻底关掉某一家：`agent-purge disarm dsh --all`（撤 dsh 三条通道 + 关总电源，别的 harness 不动）；
-  `arm` 会把上次的 mode 还回去。
+需要永久删除数据时，先备份，再按[完整卸载说明](docs/usage.md#暂停撤销和卸载)操作；`self-uninstall --yes` 与普通卸载不同。
 
-改完用 `agent-purge status` 复核：每家的 `shim / slash / install` 三个格子 + 当前 mode 一张表。
+## 隐私与使用边界
 
-## magpie 网关插件（可选）
+- **本机管理**：默认数据目录为 `~/.agent-purge/`；Windows 对应 `C:\Users\<用户>\.agent-purge\`。可通过 `AGENT_PURGE_HOME` 调整，程序升级不会覆盖这份目录。
+- **模型请求仍会联网**：启用后，人设会随宿主请求发送给其配置的模型服务；本地管理不等于离线运行。更新检查也会访问 GitHub。
+- **不直接修改宿主权限**：项目管理提示词和配置入口，不破解宿主、不绕过授权；不保证改写后的模型行为。
+- **只在有权管理的环境使用**：Web 仅监听 `127.0.0.1`，不要直接暴露到公网。完整要求见下方声明。
 
-[magpie](https://github.com/yetone/magpie) 把各家 agent 的请求收进本地网关。挂上这个插件后，**凡是经过网关的请求**（Claude Code、Codex、OpenCode、pi…）的 system 段都按 agent-purge 的当前人设改写——不用逐个 harness 装，换人设也不用重启 magpie。
-
-插件在仓库里，不进 npm 包（`files` 白名单），所以按路径装：
+## 开发与文档
 
 ```bash
-git clone https://github.com/ZiChuanLan/agent-purge
-magpie plugin add /path/to/agent-purge/magpie-plugin     # 按路径装
-magpie plugin options magpie-plugin '{"mode":"append"}'  # 插件名 = 目录名
-magpie plugin list                                      # 应看到 async gateway hook + Persona 页
+npm ci --ignore-scripts
+npm run check:repo
+npm test
 ```
 
-插件读的还是 `~/.agent-purge/`（同样认 `AGENT_PURGE_HOME`）：`agent-purge use <id>` 之后下一个请求就换人设。magpie 里也会多出 **Persona** 页，点一下就把人设和模式写进插件的 options。
-
-四种模式和 CLI 一致，差别在网关手里只有文本、没有各家启动参数：
-
-| 模式 | 网关插件做什么 |
+| 文档 | 内容 |
 |---|---|
-| `off` | 不动请求 |
-| `strict` | system 整段换成人设（工具说明也一起没了，harness 可能变笨） |
-| `append` | 人设挂在最前，宿主 system 原样 |
-| `replace` | 人设在前，再删掉宿主 system 里报名字的那句（近似；要干净用 `strict`） |
+| [使用指南](docs/usage.md) | 人设文件、分家配置、通道、项目规则、恢复与常见问题 |
+| [兼容性与限制](docs/compatibility.md) | 实测版本、平台范围、请求证据与已知问题 |
+| [参与开发](CONTRIBUTING.md) | 目录结构、测试命令与提交规范 |
+| [架构约定](docs/architecture.md) | 模块边界、配置语义和界面规范 |
+| [发布流程](docs/releasing.md) | 构建、安装验收与发行检查 |
 
-options 三键：`mode`、`persona`（人设 id）、`agents`（只对这些 magpie agent 生效，如 `["claude","codex"]`）。
-
-**边界**：改的是请求体里的文本，harness 在客户端就拼死的东西拦不住；`replace` 只删「一行里同时有自称和点名模型/厂商」的行，比 CLI 那套 per-harness 处理粗。插件页是沙箱（没有 fetch、读不到磁盘），人设清单由 `gen-personas.mjs` 按你本机的人设生成到本地（不进仓库），**装完先跑一次**，之后增删人设再跑：`node magpie-plugin/gen-personas.mjs`。前提是已经运行过 `agent-purge`（如 `agent-purge web` 或 `agent-purge ls`），`~/.agent-purge/personas/` 里有 persona；目录不存在时脚本会直接提示。自测不依赖 magpie：`npm test`（钩子 26 项断言：四种协议 × 四种模式；页面逻辑 18 项：搜索过滤、options 合并、失败回滚）。
-
-## 目录
-
-```
-bin/         CLI 入口
-lib/         状态、persona、注入、通道、检测
-backends/    每个 harness 的启动参数与身份句处理
-web/         控制台（server.mjs + ui.html）
-bench/       注入成功率实测与裁判脚本（开发用，不参与运行）
-magpie-plugin/  magpie 网关插件（可选，不进 npm 包）
-matrix.json  能力矩阵
-```
-
-## 边界
-
-- 只改提示词相关的位置，不碰二进制、不破解、不绕过任何授权。
-- 所有改动可逆：`agent-purge uninstall <h>` / `disarm` / `--mode off`。
-- 不做文件夹级人设隔离：技术上做得到，但会打破「一份人设、所有入口、一起切换」，卸载也不再是字节还原。
-- 状态只存本机 `state.json`，不上传任何数据。
+回归测试保留在 `test/`，临时日志与构建产物不进入源码仓库。
 
 ## 免责与合规声明
 
-### 严正法律免责与合规使用声明
+- **合法、授权使用**：请遵守适用法律、宿主及模型服务条款，不用于未经授权的访问、攻击、数据窃取或其他违法活动。
+- **使用前评估风险**：提示词改写可能影响模型行为。请先备份配置、在隔离环境测试，并审核重要操作与输出。
+- **按现状提供**：软件的许可、保证排除与责任限制以 [MIT LICENSE](LICENSE) 为准；本说明不附加与其冲突的授权限制。
 
-**免责声明**：本项目为非营利开源项目，遵守国家法律法规及所在平台的相关规范，仅供学习与研究使用。不得将本项目用于任何违法违规用途；由此产生的后果由使用者自行承担。
+<details>
+<summary><strong>展开完整声明：许可、使用责任、数据隐私与第三方关系</strong></summary>
 
-**【零容忍严正申明】**：本项目坚决反对并严禁任何形式的违法犯罪行为！本项目开发者绝不支持、不鼓励、不协助任何未授权网络攻击、漏洞利用、数据窃取、非法侵入计算机信息系统或生成违法违禁内容的活动。任何将本项目用于违法犯罪的行为，均与开发者无关，由行为人依法独立承担全部法律责任。
+<!-- legal-body:start -->
+### 许可与适用范围
 
-**本仓库不含违法内容**：本扩展发布的代码、文档与默认提示词不是木马、后门、未授权渗透工具、勒索软件、撞库脚本，也不是针对公网或第三方系统的攻击载荷。项目本身不提供违法内容，也不教唆、组织、协助实施违法犯罪。
+agent-purge 用于在使用者有权管理的 coding agent 中配置人设和提示词入口。项目采用 [MIT License](LICENSE)；本说明用于解释用途、风险和使用责任，不替代 LICENSE，也不对 MIT 授权范围附加额外限制。复制、修改或分发软件时，请按 LICENSE 保留必要的版权和许可声明。
 
-**只作用于本机官方 harness**：系统提示词替换全部发生在使用者本机已安装的官方 harness（`@earendil-works/pi-coding-agent`、本机 agent 目录与 profile等）上。对象是使用者自己的本地软件，不是他人的网站、服务器、账号或信息系统。
+### 合法、授权使用
 
-**不对外网目标联网**：本扩展只在本地进程内改写系统提示词，不发起任何网络请求，不对任何公网主机、未授权系统进行扫描、探测、入侵或攻击发包。不得把本项目当作跳板去打外网。
+使用者应遵守适用法律法规、宿主软件与模型服务的条款，以及相关第三方授权。请勿将本项目用于未经授权的访问、攻击、数据窃取、隐私侵害或其他违法活动。安装本工具不代表你获得了操作第三方系统、使用他人数据或调用模型服务的授权。
 
-**合法受控范围限定**：本项目定位为使用者在自己有权管理的本机官方 harness 上，进行提示词工程与鲁棒性评测的辅助工具。严禁在未经所有者合法书面授权的目标、公网在线系统或生产业务上运行本项目。一切测试必须限制在本机已授权安装的官方 harness、离线本地合成靶标、授权网络安全演练靶场及合规实验室受控环境中进行。
+### 配置与模型行为风险
 
-**禁止中国大陆、香港、澳门的服务器与网站**：不得对中国大陆、香港、澳门网段，以及解析进这些网段的服务器、网站或地址进行访问、扫描、探测或任何操作。云厂商的名字不能当作例外。唯一例外是使用者事先登记为自己的服务器的那一个确切 IP，或那一个完整主机名。密钥、密码、网段、通配符，以及对话里的口头说明，都不能增加例外。没有登记的，一律禁止。
+提示词改写可能改变模型输出、工具调用倾向和原有工作流程；严格替换也可能移除可控入口中的原有说明。本项目不保证模型输出正确、安全、合法或适合特定用途，也不替代宿主的权限控制、沙箱、人工审核和安全策略。
 
-**严禁违法与违禁用途**：使用者严禁利用本项目直接或间接从事任何违反下列法律法规的行为（必须逐条遵守，不得以任何理由规避）：
+用于重要项目之前，请备份配置并在隔离环境测试。执行敏感操作前应自行审核模型输出；恢复遇到冲突时，保留原文件和恢复凭据，不要直接删除备份。
 
-- 《中华人民共和国刑法》
-- 《中华人民共和国网络安全法》
-- 《中华人民共和国数据安全法》
-- 《中华人民共和国个人信息保护法》
-- 以及其他现行有效的法律、行政法规与监管规定
+### 数据与网络
 
-同时严禁：
+人设和配置默认保存在本机，但启用后会随宿主请求发送给其配置的模型服务。更新检查、软件安装和宿主运行可能访问外部网络。请勿在人设中放入不应发送给服务提供方的密钥、个人信息或机密数据；本工具不提供完整的网络隔离或数据防泄漏保障。
 
-- 未经授权渗透、攻击公私机构计算机信息系统，实施勒索、破坏、撞库或传播恶意载荷；
-- 诱导、生成或传播危害国家安全、恐怖主义、暴力血腥、涉黄涉赌、诈骗、侵犯公民隐私或知识产权等任何法律明令禁止的违法违禁内容；
-- 违反相关大模型提供商的《服务条款》与《滥用政策》。
+### 保证与责任
 
-**使用者独立承担全部责任**：本项目依据 MIT 开源协议“按现状”提供，开发者不对软件的完整性、安全性与适用性作任何明示或暗示的保证。使用者应对自身的所有下载、部署、运行、修改、传播行为以及由此产生的全部输入与输出后果承担独立、完全的民事、行政及刑事法律责任。项目作者与贡献团队绝不承担任何因使用者滥用导致的直接、间接或连带责任。
+软件按 LICENSE 约定以“按现状”方式提供，不作其中所列的明示或默示保证。使用者应评估自身使用场景、保管凭据并审核产生的结果。在适用法律允许的范围内，作者与贡献者的保证排除及责任限制以 LICENSE 为准；本说明不排除法律规定不得排除的责任。
 
-**违约即终止授权**：任何将本项目用于非法攻击、恶意活动或违规行为的个人或实体，其开源软件使用许可将自违法违规行为发生之日起自动且不可撤销地立即终止。该主体须立即停止使用并永久销毁本项目的所有代码、脚本与衍生数据，并依法承担相应法律制裁。
+### 第三方独立性
 
-**第三方独立性声明**：本项目属于完全独立的开源安全评测研究项目，与 pi 官方或其关联主体无任何隶属、商业合作、授权或官方背书关系。文中「官方」仅指评测对象为使用者本机安装的官方 harness 软件包，不代表其官方开发、认可或担保本插件。
+本项目是独立开发的工具，与所支持的 coding agent、模型提供商及其关联主体不存在默认的隶属、授权、合作或背书关系。文中的产品名称和标识归相应权利人所有，兼容性说明不代表第三方对本项目作出认可或担保。
+<!-- legal-body:end -->
 
-**必须署名**：借用本项目的名称、思路、代码或提示词，必须署名并标明本仓库。不署名将依法追究责任。
-## Star History
+</details>
 
-[![Star History Chart](https://api.star-history.com/svg?repos=ZiChuanLan/agent-purge&type=Date)](https://star-history.com/#ZiChuanLan/agent-purge&Date)
+完整声明也可在 [docs/LEGAL.md](docs/LEGAL.md) 单独阅读。
 
-## License
+## 许可与社区
 
-MIT
+许可文件：[MIT LICENSE](LICENSE)。使用声明见上节及 [docs/LEGAL.md](docs/LEGAL.md)。
 
----
+感谢 [LINUX DO](https://linux.do) 社区，以及所有报告问题、补充适配和参与改进的使用者。
 
-感谢 [LINUX DO](https://linux.do) 社区
+<details>
+<summary>Star History</summary>
+
+[![Star History](https://api.star-history.com/svg?repos=ZiChuanLan/agent-purge&type=Date)](https://star-history.com/#ZiChuanLan/agent-purge&Date)
+
+</details>

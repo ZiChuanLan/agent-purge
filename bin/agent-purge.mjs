@@ -6,35 +6,66 @@
 //   选东西（写 state.json）   use / mode / install / arm / slash
 //   用东西（跑起来）           <harness> / 裸敲已 arm 的命令名 / web / ls / status
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
 import { backends, oneshots } from "../backends/index.mjs";
-import { resolveBin, spawnBin } from "../lib/spawn.mjs";
-import { installCrashHandlers, recover } from "../lib/restore.mjs";
+import { resolveBin, launchConfig, prepareCommand, spawnPrepared } from "../lib/spawn.mjs";
+import { launchEnvironment } from "../lib/environment.mjs";
+import { createLaunch } from "../lib/launch.mjs";
+import { installCrashHandlers, recover, swapFile } from "../lib/restore.mjs";
 import { capsFor } from "../lib/caps.mjs";
-import { MODES, armedOf, loadState, patchState, setArmed, setDefault } from "../lib/state.mjs";
-import { ensureDataHome } from "../lib/home.mjs";
+import { MODES, armedOf, loadState, resolveFor } from "../lib/state.mjs";
+import { dataHome, ensureDataHome } from "../lib/home.mjs";
+import { applyConfiguration, changeChannel, configureHarness, disableHarness } from "../lib/apply.mjs";
+import { ROOT, isCompiled, readResource } from "../lib/root.mjs";
+// 静态导入：bun 单文件产物里，被动态 import 过的模块会被拆成独立 chunk，命名空间就空了
+import { serveWeb } from "../web/server.mjs";
 
-// bun --compile 产物：资源目录 = exe 所在目录；普通 node：包根
-const ROOT = process.versions.bun ? dirname(process.execPath) : dirname(dirname(fileURLToPath(import.meta.url)));
 // 数据（state.json + personas/）放用户目录，npm 升级不会连人设一起清掉
-const DATA = ensureDataHome(ROOT).home;
-const matrix = JSON.parse(readFileSync(join(ROOT, "matrix.json"), "utf8"));
+// 编译态没有「包目录」可搬旧数据，传 null 跳过 legacy 迁移
+const DATA = dataHome();
+const matrix = (() => {
+	try { return JSON.parse(readResource("matrix.json").toString("utf8")); }
+	catch (error) { throw new Error(`无法加载 matrix.json：${error.message}`, { cause: error }); }
+})();
+// 这些家只有“整段替换/追加”两个启动口，没有宿主提示词可读：replace 实际按 strict 执行。
+const STRICT_REPLACE = new Set(["codex", "claude", "grok", "codebuddy", "hermes"]);
 
 const argv = process.argv.slice(2);
+const separator = argv.indexOf("--");
+const controlArgs = separator < 0 ? argv : argv.slice(0, separator);
+if (controlArgs.includes("--help") || controlArgs.includes("-h")) { help(); process.exit(0); }
+if (argv[0] === "self-uninstall" && !argv.includes("--yes") && !argv.includes("--dry-run")) {
+	console.error("self-uninstall 会永久删除用户人设、设置和恢复资料。请先备份；仅撤销接管并保留数据请用 agent-purge clean。\n先预览：agent-purge self-uninstall --dry-run\n确认删除：agent-purge self-uninstall --yes");
+	process.exit(2);
+}
+ensureDataHome(isCompiled() ? null : ROOT);
+
 installCrashHandlers();
-const recovered = recover(); // 上次进程被杀时留下的半改配置，开机先回滚
+const recovered = recover(); // 只在真实命令入口恢复；--help 不读写 journal
 if (recovered > 0) console.log(`[restore] 回滚了 ${recovered} 个上次残留的配置文件`);
-if (argv.includes("--help") || argv.includes("-h")) help(); // 永远优先于默认值
+
+// 编译态与脚本态使用同一个 Web 入口；0 表示系统分配空闲端口，供隔离 smoke 使用。
+if (argv[0] === "--serve") {
+	const port = argv[1] === undefined ? 7788 : Number(argv[1]);
+	if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("端口必须为 0..65535 的整数");
+	serveWeb(port);
+	await new Promise(() => {});
+}
 const flag = (name, fallback) => {
 	// 支持 --mode=append 这种写法（以前只认空格分隔，等号形式会被静默忽略）
-	const inline = argv.find((a) => a.startsWith(name + "="));
+	const inline = controlArgs.find((a) => a.startsWith(name + "="));
 	if (inline !== undefined) return inline.slice(name.length + 1);
-	const i = argv.indexOf(name);
-	return i === -1 ? fallback : argv[i + 1];
+	const i = controlArgs.indexOf(name);
+	return i === -1 ? fallback : controlArgs[i + 1];
 };
 let cmd = argv[0];
+
+// 便携版 exe 双击无参数启动时，默认直接打开原生桌面窗口应用
+if (!cmd && isCompiled()) {
+	await webCmd();
+	// 挂住事件循环
+	await new Promise(() => {});
+}
 
 if (!cmd || cmd.startsWith("-")) cmd = await defaultHarness();
 
@@ -43,8 +74,15 @@ switch (cmd) {
 	case "use":
 		await useCmd();
 		break;
+	case "sync":
+		await syncCmd();
+		break;
 	case "mode":
 		modeCmd();
+		break;
+	case "pause":
+	case "resume":
+		printApply(applyConfiguration(DATA, { enabled: cmd === "resume" }));
 		break;
 	case "install":
 	case "uninstall":
@@ -59,8 +97,11 @@ switch (cmd) {
 	case "slash":
 		await slashCmd(argv.slice(1));
 		break;
+	case "project":
+		await projectCmd(argv.slice(1));
+		break;
 	case "status":
-		statusCmd();
+		await statusCmd();
 		break;
 	case "ls":
 		await lsCmd();
@@ -77,9 +118,113 @@ switch (cmd) {
 	case "armor":
 		await armorCli(argv.slice(1));
 		break;
-	case "web":
-		webCmd();
+	case "update":
+	case "upgrade": {
+		const { checkForUpdate, downloadFile, replaceSelfExecutable, canReplaceSelf, RELEASES_PAGE } = await import("../lib/update.mjs");
+		const doDownload = argv.includes("--download") || argv.includes("-d") || argv.includes("--yes") || argv.includes("-y");
+		console.log("正在检查 GitHub Release 最新版本...");
+		const info = await checkForUpdate({ force: true });
+		if (!info.ok) {
+			console.log(`✗ 检查更新失败：${info.error}`);
+			console.log(`  可手动访问发布页查看：${RELEASES_PAGE}`);
+			process.exitCode = 1;
+			break;
+		}
+		console.log(`当前运行版本：v${info.current}`);
+		if (info.published === false) {
+			console.log("尚无公开 Release；这不表示 npm 已是最新版。npm 安装可运行 npm outdated -g agent-purge。");
+			break;
+		}
+		console.log(`最新发布版本：v${info.latest} (${info.tagName || info.latest})`);
+		if (!info.hasUpdate) {
+			console.log("\n✓ 当前已是最新版本！");
+			break;
+		}
+		console.log(`\n⚡ 发现新版本：v${info.latest}！`);
+		if (info.body) {
+			console.log(`\n【更新说明】\n${info.body.trim().slice(0, 500)}${info.body.length > 500 ? "..." : ""}`);
+		}
+
+		const isExe = canReplaceSelf();
+		const targetExeAsset = info.assets?.find((a) => a.name.toLowerCase() === "agent-purge.exe");
+		const targetSetupAsset = info.assets?.find((a) => a.name.toLowerCase().endsWith("-setup.exe"));
+
+		if (isExe && targetExeAsset) {
+			console.log(`\n检测到当前为独立 exe 运行环境，可直接原地升级。`);
+			if (doDownload) {
+				const { tmpdir } = await import("node:os");
+				const tempTarget = join(tmpdir(), `agent-purge-new-${Date.now()}.exe`);
+				console.log(`正在下载 ${targetExeAsset.name} (${(targetExeAsset.size / 1024 / 1024).toFixed(1)} MB)...`);
+				await downloadFile(targetExeAsset.downloadUrl, tempTarget, (rec, tot) => {
+					if (tot > 0) process.stdout.write(`\r下载进度: ${((rec / tot) * 100).toFixed(1)}%`);
+				}, { expectedSize: targetExeAsset.size, digest: targetExeAsset.digest });
+				console.log("\n下载完成，正在安全替换当前可执行文件...");
+				try { replaceSelfExecutable(tempTarget); } finally { const { rmSync } = await import("node:fs"); rmSync(tempTarget, { force: true }); }
+				console.log(`✓ 升级成功！当前 exe 已就绪为 v${info.latest}。重启 agent-purge 即可生效。`);
+				break;
+			}
+			console.log(`  · 自动下载并就地升级当前 exe：\n     agent-purge update --download`);
+		} else if (process.platform === "win32" && targetSetupAsset && doDownload) {
+			const { tmpdir } = await import("node:os");
+			const tempSetup = join(tmpdir(), targetSetupAsset.name);
+			console.log(`正在下载安装包 ${targetSetupAsset.name}...`);
+			await downloadFile(targetSetupAsset.downloadUrl, tempSetup, undefined, { expectedSize: targetSetupAsset.size, digest: targetSetupAsset.digest });
+			console.log(`\n下载完成，正在启动安装程序：${tempSetup}`);
+			const { spawn } = await import("node:child_process");
+			spawn(tempSetup, [], { detached: true, stdio: "ignore" }).unref();
+			process.exit(0);
+		}
+
+		console.log("\n【下载与升级方式】");
+		console.log(`  1. 访问 GitHub Release 页面直接下载：\n     ${info.htmlUrl}`);
+		if (info.assets?.length) {
+			console.log("  2. Release 包含的安装/便携产物：");
+			for (const a of info.assets) {
+				const sizeMb = (a.size / 1024 / 1024).toFixed(1);
+				console.log(`     · ${a.name} (${sizeMb} MB) → ${a.downloadUrl}`);
+			}
+		}
+		console.log("  3. 若通过 npm 全局安装，可直接执行：\n     npm install -g agent-purge@latest");
 		break;
+	}
+	case "web":
+		await webCmd();
+		break;
+	case "clean":
+	case "self-uninstall": {
+		const { clean } = await import("../lib/clean.mjs");
+		const dryRun = argv.includes("--dry-run");
+		if (dryRun) console.log("dry-run：只报会做什么，一条也不写\n");
+		const r = clean(DATA, { all: cmd === "self-uninstall", dryRun });
+		for (const s of r.steps) {
+			const detail = typeof s.detail === "string" ? s.detail : JSON.stringify(s.detail);
+			console.log(`${s.ok ? "✓" : "✗"} ${s.what}${s.detail === undefined ? "" : ` — ${detail}`}`);
+		}
+		if (r.leftovers.length) console.log(`\n还剩：\n${r.leftovers.map((l) => `  · ${l}`).join("\n")}`);
+		console.log(r.ok && !r.leftovers.length ? "\n干净了：没有残留" : "\n有残留，见上");
+		if (!r.ok) process.exitCode = 1;
+		if (cmd === "self-uninstall") console.log("\n代码本身用包管理器卸：npm uninstall -g agent-purge");
+		break;
+	}
+	case "verify": {
+		const { verifyHarnesses, cleanupRoots } = await import("../lib/capture.mjs");
+		const wanted = argv.slice(1).filter((a) => !a.startsWith("-"));
+		const hs = wanted.length ? wanted : Object.keys(matrix.harnesses ?? {});
+		const mode = loadState(DATA).state?.default?.mode ?? "replace";
+		const report = await verifyHarnesses(hs, { root: DATA, mode });
+		for (const r of report.harnesses) {
+			if (r.status === "captured") {
+				const m = r.modes[0];
+				const where = ["sys", "user"].filter((k) => m?.injected?.[k]).join("+") || "-";
+				console.log(`✓ ${r.harness} 实测：命中 ${where} · ${m?.chars ?? 0} 字 · ${m?.requests?.length ?? 0} 个请求`);
+			} else if (r.status === "missing") console.log(`· ${r.harness} 未安装，跳过`);
+			else console.log(`✗ ${r.harness} ${r.status}${r.reason ? ` — ${r.reason}` : ""}`);
+		}
+		console.log(`\n证据：${join(DATA, "verification", "latest.json")}`);
+		cleanupRoots();
+		if (report.harnesses.some((r) => ["mismatch", "error"].includes(r.status))) process.exitCode = 1;
+		break;
+	}
 	default:
 		await launch(cmd);
 }
@@ -94,7 +239,9 @@ async function defaultHarness() {
 		console.log("还没有默认 harness。两种办法：\n  agent-purge web           在浏览器里选，再点“设为默认执行器”\n  agent-purge <harness>     直接点名跑（如 agent-purge codex）");
 		process.exit(0);
 	}
-	console.log(`[default] ${harness} · ${state.default.mode} · persona=${state.persona ?? "-"}（state.json）`);
+	const eff = resolveFor(state, harness);
+	const mark = (from) => (from === "override" ? "（单独指定）" : "（跟随全局）");
+	console.log(`[default] ${harness} · ${eff.mode}${mark(eff.modeFrom)} · persona=${eff.persona ?? "-"}${mark(eff.personaFrom)}（state.json）`);
 	return harness;
 }
 
@@ -107,7 +254,8 @@ async function launch(name) {
 	// 由 state.json 决定注入方式；显式 --mode 永远压过它
 	const explicitMode = flag("--mode", null);
 	if (explicitMode !== null && !MODES.includes(explicitMode)) die(`--mode 只能是 ${MODES.join(" / ")}`);
-	const mode = explicitMode ?? state.default?.mode ?? "replace";
+	const config = launchConfig(state, name, { mode: explicitMode, persona: flag("--persona", null) === "active" ? state.persona : flag("--persona", null) });
+	const mode = config.mode;
 
 	// 裸敲 pi 的持久位（写 state.json，扩展下一会话读它）
 	const autoFlag = name === "pi" || name === "omp" ? flag("--auto", null) : null;
@@ -140,6 +288,9 @@ async function launch(name) {
 		const noSys = strategy.blocked.find((b) => b.layer === "sys");
 		if (noSys && mode !== "off") console.log(`[策略] ${name}：sys 层不可用（${noSys.reason}），本次只能靠 user 层`);
 	}
+	if (mode === "replace" && STRICT_REPLACE.has(name)) {
+		console.log(`[mode] ${name} 没有宿主提示词读取口：replace 实际按 strict 执行；要保留宿主请用 --mode append`);
+	}
 
 	// 通道全废的家（闭源桌面 / 提示词在服务端）说清楚：这次只是原样启动，没注入任何东西
 	{
@@ -150,23 +301,16 @@ async function launch(name) {
 		}
 	}
 
-	const { createStore } = await import("../lib/personas.mjs");
-	const store = createStore(DATA);
-	const personaName = flag("--persona", "active");
-	let pickedName = personaName === "active" ? store.activeId() : personaName;
-	let picked = store.read(pickedName);
-	// 指针可能指向已删的 persona：回退到第一个，不让启动器直接死
-	if (!picked && personaName === "active") {
-		const first = store.list()[0];
-		if (first) {
-			console.warn(`[warn] active 指向不存在的 persona: ${pickedName ?? "(空)"}，本次回退到 ${first.id}（agent-purge use ${first.id} 可写回指针）`);
-			pickedName = first.id;
-			picked = first;
-		}
+	let picked = null, personaPath = null, personaText = "";
+	if (mode !== "off") {
+		const { createStore } = await import("../lib/personas.mjs");
+		const store = createStore(DATA);
+		const id = config.persona ?? store.activeId();
+		picked = store.read(id);
+		if (!picked) die(`没有 persona: ${id}`);
+		personaPath = picked.id === store.activeId() ? store.refreshActive() : store.materialize(picked.id);
+		personaText = picked.body.trim();
 	}
-	if (!picked) die(`没有 persona: ${pickedName}（可用: ${store.list().map((p) => p.id).join(", ")}）`);
-	const personaPath = store.materialize(picked.id);
-	const personaText = picked.body.trim();
 	const cwd = resolve(flag("--cwd", process.cwd()));
 
 	// --ask：一次性问答，与 Web UI 共用 oneshots 规格；不给才启动交互式 harness
@@ -190,9 +334,9 @@ async function launch(name) {
 		}
 	}
 
-	const askEq = argv.find((a) => a.startsWith("--ask="));
-	const askIdx = argv.indexOf("--ask");
-	const askPrompt = askEq !== undefined ? askEq.slice(6) : askIdx !== -1 ? argv[askIdx + 1] : null;
+	const askEq = controlArgs.find((a) => a.startsWith("--ask="));
+	const askIdx = controlArgs.indexOf("--ask");
+	const askPrompt = askEq !== undefined ? askEq.slice(6) : askIdx !== -1 ? controlArgs[askIdx + 1] : null;
 	let built;
 	if (askPrompt !== null) {
 		const raw = askPrompt;
@@ -200,10 +344,10 @@ async function launch(name) {
 		const prompt = raw.trim();
 		const one = oneshots[name];
 		if (!one) die(`${name} 没有一次性运行模式（可用: ${Object.keys(oneshots).join(", ")}）`);
-		built = one({ prompt, personaPath, personaText, mode, cwd });
+		built = one({ prompt, personaPath, personaText, mode, cwd, root: DATA });
 		if (passthrough.length) built.args = [...built.args, ...passthrough];
 	} else {
-		built = backends[name]?.({ personaPath, personaText, mode, args: passthrough, cwd, reason: spec.reason }) ?? {
+		built = backends[name]?.({ personaPath, personaText, mode, args: passthrough, cwd, root: DATA, reason: spec.reason }) ?? {
 			unsupported: "该 harness 还没有后端实现",
 		};
 	}
@@ -216,318 +360,243 @@ async function launch(name) {
 	if (built.unsupported) die(`${name} 做不到：${built.unsupported}`);
 
 	if (built.note) console.log(built.note);
-	if (built.residueHint) console.log(`[residue] ${built.residueHint}`);
-	const dryRun = argv.includes("--dry-run");
-	// 启动时把人设塞进扩展（omp / pi）：命令行走不通 10K 人设，扩展也没有长度上限。
-	// omp 交互式启动时把后端的 --system-prompt 摘掉，否则扩展和命令行会各注入一次。
-	// 但 --profile / --no-extensions 下默认扩展目录不会加载：这两个情况保留命令行注入。
+	const dryRun = controlArgs.includes("--dry-run");
 	const ompProfile = name === "omp" ? (flag("--profile", null) ?? process.env.OMP_PROFILE ?? null) : null;
-	const ompNoExtensions = name === "omp" && (argv.includes("--no-extensions") || argv.some((a) => a.startsWith("--no-extensions=")));
-	const useExtension = name !== "omp" || (askPrompt === null && !ompProfile && !ompNoExtensions);
+	const ompNoExtensions = name === "omp" && argv.includes("--no-extensions");
+	const useExtension = mode !== "off" && (name === "pi" || (name === "omp" && askPrompt === null && !ompProfile && !ompNoExtensions));
 	let extFile = null;
-	if ((name === "pi" || name === "omp") && !built.unsupported && !built.manual) {
-		const isOmp = name === "omp";
-		if (mode === "off") {
-			// 不装、也不喊注入：扩展就算在盘上，也会因为 mode=off + 没 FORCE 而沉默
-			built.env = { ...built.env, AGENT_PURGE_MODE: "off" };
-		} else if (useExtension) {
-			if (isOmp && built.args[0] === "--system-prompt") built.args.splice(0, 2);
-			if (!dryRun) {
-				const { installSlash } = await import("../lib/slashes.mjs");
-				const r = installSlash(name, DATA, { personaId: picked.id, personaBody: personaText });
-				if (r.error) die(`${name}: ${r.error}`);
-				extFile = r.file;
-			}
-			built.env = { ...built.env, AGENT_PURGE_PERSONA: picked.id, AGENT_PURGE_MODE: mode, AGENT_PURGE_FORCE: "1" };
-		} else if (isOmp && askPrompt === null) {
-			console.log("[ext] --profile/--no-extensions：本次保留命令行注入，/purge 热切不可用");
-		} else if (isOmp) {
-			// --ask：命令行已经注入；扩展若在盘上且 ompAuto 开着会再注一遍，这里按 off 静音
-			built.env = { ...built.env, AGENT_PURGE_MODE: "off" };
+	if (useExtension) {
+		if (name === "omp" && ["--system-prompt", "--append-system-prompt"].includes(built.args[0])) built.args.splice(0, 2);
+		const { resolveSlash } = await import("../lib/slashes.mjs");
+		extFile = resolveSlash(name, DATA)?.file;
+		if (!extFile) die(`${name}: 没有扩展目录`);
+		// 临时 -e 只供本次进程；不会悄悄选择常驻 /purge 或覆盖用户已有扩展。
+		if (!state.armed?.[name]?.includes("slash")) {
+			extFile = join(DATA, "runtime", "extension-" + name + ".mjs");
+			built.args = ["-e", extFile, ...built.args];
 		}
 	}
-	// off 有两种来源：全局总电源关了，或者这一轮手动指定。措辞不能混，否则看日志的人会以为总开关坏了
 	if (mode === "off") {
-		const globalOff = (state.default?.mode ?? "") === "off";
-		console.log(
-			globalOff
-				? "[off] 总电源关着（state.default.mode=off）：本轮原样启动，不装扩展、不注入；要注入就先去 UI 把总开关拧开，或 --mode replace/strict/append"
-				: "[off] 本轮不注入（--mode off）：原样启动；全局默认仍是 " + (state.default?.mode ?? "?") + "，想改默认用 agent-purge mode <模式>",
-		);
+		const { launchConflicts } = await import("../lib/launch-conflicts.mjs");
+		const conflicts = launchConflicts(DATA, name, cwd);
+		if (conflicts.length) die("本次 off 与仍在磁盘上的常驻/项目内容冲突：\n" + conflicts.join("\n") + "\n请先 agent-purge pause 撤下登记内容，再重试。全局选择保持不变。");
+		console.log(state.default?.mode === "off" ? "[off] 总电源关着：本次不安装、不 materialize、不注入；恢复请用 agent-purge resume" : "[off] 本次透传；全局选择保持不变");
 	}
-	console.log(`[cmd] ${[built.cmd, ...built.args.map((a) => (a.includes(" ") ? JSON.stringify(a) : a))].join(" ")}`);
-	if (extFile) console.log(`[ext] ${extFile}（/purge 热切换）`);
-	if (dryRun) process.exit(0);
-
-	if (!resolveBin(built.cmd)) {
-		die(`${name}: 找不到可执行文件 ${built.cmd}（PATH 里没有它；agent-purge doctor 可看本机探测结果）`);
-	}
-	built.setup?.();
-	// Ctrl-C 时也要清掉一次性插件：process.exit 会触发 exit 监听器，不依赖 child close
-	let cleaned = false;
+	console.log(`[cmd] ${[built.cmd, ...previewArgs(built.args)].join(" ")}`);
+	if (extFile) console.log(`[ext] ${extFile}`);
+	if (dryRun) return;
+	if (!resolveBin(built.cmd)) die(`${name}: 找不到可执行文件 ${built.cmd}`);
+	if (name === "opencode" && built.args.some(v => v === "--attach" || v.startsWith("--attach="))) die("一次性启用使用独立宿主；--attach 指向已有服务，请使用该服务已登记的常驻通道");
+	const needsLease = useExtension || built.runtime || ["pi", "omp", "dsh", "opencode", "opencode2"].includes(name);
+	const lease = needsLease ? createLaunch(DATA, name, { persona: picked?.id, mode, writer: useExtension ? "extension" : built.runtime ? "temporary" : "cli" }) : null;
+	let undoExtension = null, cleaned = false, child = null, server = null;
 	const cleanup = () => {
-		if (cleaned) return;
-		cleaned = true;
+		if (cleaned) return true;
 		try {
+			lease?.close();
+			if (server) { server.close(); server = null; }
 			built.cleanup?.();
-		} catch {}
+			if (undoExtension) { undoExtension(); undoExtension = null; }
+			cleaned = true; return true;
+		} catch (error) { console.error("[cleanup] " + error.message + "；恢复凭据已保留，可重试"); return false; }
 	};
 	process.once("exit", cleanup);
-	// 一次性问答：stdin 直接给 NUL。否则 codex 这类会先“Reading additional input from stdin...”
-	// 并阻塞到 EOF（非 TTY 环境必现）；stdin 关了它就直接跑。
-	const stdio = askPrompt !== null ? ["ignore", "inherit", "inherit"] : "inherit";
-	const child = spawnBin(built.cmd, built.args, { cwd, stdio, env: { ...process.env, ...built.env } });
-	const finish = (code) => {
-		cleanup();
-		process.exit(code ?? 1);
-	};
-	child.on("error", (e) => {
-		console.error(`${name}: ${e.message}`);
-		finish(1);
-	});
-	child.on("close", (code) => finish(code));
+	try {
+		const env = { ...launchEnvironment(process.env), ...built.env, ...lease?.env };
+		if (useExtension) {
+			const { extensionSource } = await import("../lib/extension.mjs");
+			const { mkdirSync } = await import("node:fs");
+			mkdirSync(join(extFile, ".."), { recursive: true });
+			undoExtension = swapFile(extFile, extensionSource(DATA, name));
+		}
+		built.setup?.();
+		if (built.privateServer) {
+			const { startPrivateServer } = await import("../lib/private-server.mjs");
+			server = await startPrivateServer(built.cmd, { env, cwd, lease });
+			built.args = server.clientArgs(built.args);
+		}
+		const stdio = askPrompt !== null ? ["ignore", "inherit", "inherit"] : "inherit";
+		const descriptor = prepareCommand(built.cmd, built.args, { cwd, stdio, env });
+		if (lease && !server && !descriptor.hostDirect) throw new Error("临时启用尚未验证这个启动器的宿主归属，请指向原生 exe 或标准 Node 入口");
+		const startedAt = Date.now(); child = spawnPrepared(descriptor);
+		if (lease && !server && child.pid) lease.publish(child.pid, startedAt);
+		let finished = false;
+		const finish = code => { if (finished) return; finished = true; process.exitCode = cleanup() ? code ?? 1 : 1; };
+		child.once("error", error => { console.error(`${name}: ${error.message}`); finish(1); });
+		child.once("close", finish);
+	} catch (error) {
+		if (child) child.kill(); cleanup(); process.exitCode = 1; console.error(`${name}: ${error.message}`);
+	}
+
 }
 
 // ── 选东西的实现 ───────────────────────────────────────────────────────────
 
-async function useCmd() {
-	const { createStore } = await import("../lib/personas.mjs");
-	const store = createStore(DATA);
-	const arg = argv[1];
-	const { state, migrated } = loadState(DATA);
-	migrated.forEach((m) => console.log(`[migrate] ${m}`));
+function printApply(r) {
+	console.log(`persona ${r.persona ?? "(未设置)"} · mode ${r.mode} · revision ${r.revision}`);
+	for (const row of r.results) {
+		// 被例外覆盖的那家写进去的不是全局值，直接标出来，否则看不出来它是怎么生效的
+		const odd = row.mode && row.mode !== r.mode ? ` [${row.persona ?? "-"} · ${row.mode}]` : "";
+		console.log(`${row.status === "failed" ? "✗" : "✓"} ${row.harness}:${row.channel}${odd}${row.channel === "project" && row.file ? ` → ${row.file}` : ""} — ${row.error ?? row.message}`);
+	}
+	if (!r.ok) process.exitCode = 1;
+}
 
-	const id = arg && !arg.startsWith("-") ? arg : state.persona;
-	if (!id) {
-		console.log(`当前 persona: (未设置)\n可用: ${store.list().map((p) => p.id).join(", ")}`);
+/** 只列跟全局不一样的几家；没例外就什么都不打印 */
+function printOverrides(state) {
+	for (const [h, o] of Object.entries(state.overrides ?? {})) {
+		const bits = [o.persona ? `人设=${o.persona}` : "", o.mode ? `模式=${o.mode}` : ""].filter(Boolean);
+		console.log(`  ${h}: ${bits.join(" ")}（其余跟随全局；--for ${h} follow 恢复）`);
+	}
+}
+
+async function useCmd() {
+	const id = argv[1];
+	const forHarness = flag("--for", null);
+	if (forHarness) {
+		if (!id) die("用法：agent-purge use <persona|follow> --for <harness>");
+		const follow = id === "follow";
+		const { createStore } = await import("../lib/personas.mjs");
+		const store = createStore(DATA);
+		if (!follow && !store.read(id)) die(`没有人设: ${id}（可用: ${store.list().map((p) => p.id).join(", ")}）`);
+		const report = configureHarness(DATA, forHarness, { persona: follow ? null : id });
+		const eff = resolveFor(loadState(DATA).state, forHarness);
+		console.log(`${forHarness} 人设 → ${eff.persona ?? "(未设置)"}（${eff.personaFrom === "override" ? "单独指定" : "跟随全局"}）`);
+		printApply(report);
 		return;
 	}
-	if (!store.read(id)) die(`没有 persona: ${id}（可用: ${store.list().map((p) => p.id).join(", ")}）`);
-	store.setActive(id); // 写 active.md 快照 + state.persona 指针
-
-	// user 层的 /purge 命令文件是烘焙进去的，换人设必须重渲染
-	const { refreshSlashes } = await import("../lib/slashes.mjs");
-	const refreshed = refreshSlashes(DATA, state.armed ? Object.entries(state.armed).filter(([, a]) => a.includes("slash")).map(([k]) => k) : [], {
-		personaId: id,
-		personaBody: store.read(id).body.trim(),
-	});
-	console.log(`persona ← ${id}（active.md 已同步）`);
-	refreshed.forEach((f) => console.log(`[slash] 重新写入 ${f}`));
-	if (Object.keys(state.armed ?? {}).length) {
-		console.log("已武装的 harness 下一轮/下次启动自动跟随；落盘型（install）若想立刻同步：agent-purge install <h>");
+	if (!id) {
+		console.log(`当前 persona: ${loadState(DATA).state.persona ?? "(未设置)"}`);
+		printOverrides(loadState(DATA).state);
+		return;
 	}
+	printApply(applyConfiguration(DATA, { persona: id }));
+}
+
+async function syncCmd() {
+	printApply(applyConfiguration(DATA, { onlyFailed: argv.includes("--failed") }));
 }
 
 function modeCmd() {
-	const want = argv[1];
-	const { state } = loadState(DATA);
-	const current = state.default?.mode ?? "replace";
-	if (!want) {
-		console.log(
-			[
-				`当前注入方式: ${current}`,
-				"  strict  只发人设（宿主提示词全丢，最干净）",
-				"  replace 人设在前 + 宿主提示词剔除身份句（默认，官方仍认得你）",
-				"  append  人设只挂在最前，宿主原样保留（最保守）",
-				"  off     不注入（受管 harness 也能干净地裸用）",
-			].join("\n"),
-		);
+	const mode = argv[1];
+	const forHarness = flag("--for", null);
+	if (forHarness) {
+		if (!mode) die("用法：agent-purge mode <strict|replace|append|off|follow> --for <harness>");
+		const follow = mode === "follow";
+		if (!follow && !MODES.includes(mode)) die(`未知模式: ${mode}（可用: ${MODES.join("/")}/follow）`);
+		const report = configureHarness(DATA, forHarness, { mode: follow ? null : mode });
+		const eff = resolveFor(loadState(DATA).state, forHarness);
+		console.log(`${forHarness} 模式 → ${eff.mode}（${eff.modeFrom === "override" ? "单独指定" : "跟随全局"}）`);
+		printApply(report);
 		return;
 	}
-	if (!MODES.includes(want)) die(`mode 只能是 ${MODES.join(" / ")}`);
-	setDefault(DATA, { harness: state.default?.harness ?? "codex", mode: want });
-	console.log(`mode ← ${want}（state.json；下次启动生效，--mode 可临时覆盖）`);
+	if (!mode) {
+		console.log(`当前模式: ${loadState(DATA).state.default?.mode ?? "replace"}\nstrict=只发人设；replace=移除宿主身份句；append=宿主后追加；off=暂停并撤下静态内容`);
+		printOverrides(loadState(DATA).state);
+		return;
+	}
+	printApply(applyConfiguration(DATA, { mode }));
 }
 
 async function installCmd(verb, rest) {
-	const id = rest[0];
-	const ids = id === "--all" || !id ? Object.keys(matrix.harnesses).filter((h) => matrix.harnesses[h].class !== "unsupported") : [id];
-	// 常驻只走 lib/persist.mjs 这一个控制面（caps / Web 开关 / status 都读它的 targets）
-	const { install, uninstall, targets } = await import("../lib/persist.mjs");
-	const { createStore } = await import("../lib/personas.mjs");
-	const store = createStore(DATA);
-	for (const h of ids) {
-		if (!matrix.harnesses[h]) die(`未知 harness: ${h}`);
-		if (!targets[h]) {
-			console.log(`${h}: 没有常驻模式（用 arm 走裸命令接管 / slash 走会话内）`);
-			continue;
-		}
-		let r;
-		if (verb === "install") {
-			const pid = store.activeId();
-			if (!pid) die("还没有 persona：先 agent-purge use <id>");
-			r = install(h, { root: DATA, active: store.refreshActive() }) ?? {};
-		} else {
-			// 卸载不能依赖 persona 还在：人设删了也必须能关
-			r = uninstall(h) ?? {};
-		}
-		const ok = !r.error;
-		console.log(`${ok ? "✓" : "✗"} ${verb} ${h}${r.file ? ` → ${r.file}` : ""}${r.note ? `  (${r.note})` : ""}${r.error ? `  ${r.error}` : ""}`);
-		if (ok) setArmed(DATA, h, "install", verb === "install");
+	const { targets } = await import("../lib/persist.mjs");
+	const named = rest.filter(value => !value.startsWith("-"));
+	const ids = named.length ? named : Object.keys(targets);
+	for (const harness of ids) {
+		const r = changeChannel(DATA, { harness, channel: "install", enabled: verb === "install", force: rest.includes("--force") });
+		console.log(`${r.ok ? "✓" : "✗"} ${verb} ${harness} — ${r.error ?? r.action ?? r.message}${r.file ? " → " + r.file : ""}`);
+		if (r.profiles) console.log(`  实际 profile：${r.profiles.join(", ") || "没有已安装的插件"}`);
+		for (const file of r.preserved ?? []) console.log(`  保留用户修改/旧版文件：${file}`);
+		if (verb === "uninstall" && harness === "dsh") console.log("  uninstall 仅撤常驻通道；撤销包含 /purge 在内的全部入口请用 agent-purge disarm dsh。");
+		if (!r.ok) process.exitCode = 1;
 	}
 }
 
 async function armCmd(verb, rest) {
-	const { installShim, uninstallShim, ensureUserPath } = await import("../lib/shim.mjs");
-	const { installSlash, uninstallSlash } = await import("../lib/slashes.mjs");
-	const { install, uninstall } = await import("../lib/persist.mjs");
-	const { capsFor } = await import("../lib/caps.mjs");
-	const { createStore } = await import("../lib/personas.mjs");
-	const store = createStore(DATA);
-	const pid = store.activeId();
-	if (!pid) die("还没有 persona：先 agent-purge use <id>");
-
-	const supported = Object.keys(matrix.harnesses).filter((h) => matrix.harnesses[h].class !== "unsupported");
-	const namedTarget = rest.filter((x) => !x.startsWith("-"));
-	// 点了名的只动那家：`--all` 只管总电源，不再悄悄把别的 harness 一起撤（issue #5）
-	const targets = namedTarget.length ? namedTarget : supported;
-
-	// 全局 --all 就是总电源：撤的时候必须把 default.mode 置 off，
-	// 否则 `agent-purge <h>` 这条入口照样注入（实测：关了总开关还能接管，就是这里漏的）。
-	// 开的时候把上次的 mode 还回去。单家操作不动 mode。
-	// 没设过默认 harness 时也要能关：launch() 在 default 为空时会回落成 replace。
+	const named = rest.filter(value => !value.startsWith("-"));
+	const ids = named.length ? named : Object.keys(matrix.harnesses).filter(h => matrix.harnesses[h].class !== "unsupported");
+	for (const h of ids) if (!matrix.harnesses[h]) die(`未知执行器: ${h}`);
 	if (rest.includes("--all")) {
-		const { state: cur } = loadState(DATA);
-		const m = cur.default?.mode ?? null; // null = 从没设过，launch() 会回落成 replace
-		const h = cur.default?.harness ?? null;
-		if (verb === "disarm" && m !== "off") {
-			patchState(DATA, { default: { harness: h, mode: "off" }, prevMode: m ?? "replace" });
-			console.log(`总电源：mode ${m ?? "(未设，实际按 replace)"} → off（裸敲 agent-purge / agent-purge <h> 都不再注入；arm --all 还回去）`);
-		}
-		if (verb === "arm" && cur.default && m === "off") {
-			const back = MODES.includes(cur.prevMode) && cur.prevMode !== "off" ? cur.prevMode : "replace";
-			patchState(DATA, { default: { harness: h, mode: back } });
-			console.log(`总电源：mode off → ${back}`);
-		}
+		console.log("总电源：" + (verb === "arm" ? "恢复" : "暂停"));
+		printApply(applyConfiguration(DATA, { enabled: verb === "arm" }));
 	}
-
-	// 通道默认全开（常驻 + 裸命令接管 + /purge）；只想做其中一个就显式点名
-	const named = ["--install", "--shim", "--slash"].filter((f) => rest.includes(f));
-	const channels = named.length ? named.map((f) => f.slice(2)) : ["install", "shim", "slash"];
-	let armedAny = 0;
-
-	for (const h of targets) {
-		if (!matrix.harnesses[h]) die(`未知 harness: ${h}`);
-		const done = [];
-		const skip = [];
-
-		for (const ch of channels) {
-			// 先过能力表：这家形态上做不到的通道（如 zcode 桌面 + shim），不写文件，直接说明原因
-			if (verb === "arm") {
-				const cap = capsFor(h)[ch];
-				if (cap && !cap.ok) {
-					skip.push(`${ch}: ${cap.why}`);
-					continue;
-				}
-			}
-			if (ch === "install") {
-				const r = verb === "arm" ? install(h, { root: DATA, active: store.refreshActive() }) : uninstall(h);
-				if (r.error) skip.push(`常驻: ${r.error}`);
-				else {
-					setArmed(DATA, h, "install", verb === "arm");
-					done.push(verb === "arm" ? `常驻 ${r.action}` : `撤常驻 ${r.action}`);
-				}
-			}
-			if (ch === "shim") {
-				const r = verb === "arm" ? installShim(DATA, h) : uninstallShim(DATA, h);
-				if (r.error) skip.push(`shim: ${r.error}`);
-				else {
-					setArmed(DATA, h, "shim", verb === "arm");
-					done.push(verb === "arm" ? "裸命令接管" : "撤裸命令接管");
-				}
-			}
-			if (ch === "slash") {
-				const r =
-					verb === "arm"
-						? installSlash(h, DATA, { personaId: pid, personaBody: store.read(pid).body.trim() })
-						: uninstallSlash(h, DATA);
-				if (r.error) skip.push(`/purge: ${r.error}`);
-				else {
-					setArmed(DATA, h, "slash", verb === "arm");
-					done.push(verb === "arm" ? `/purge ${r.layer} 层` : "撤 /purge");
-				}
-			}
+	const channels = ["install", "shim", "slash", "project"].filter(c => rest.includes("--" + c));
+	let shim = false;
+	for (const harness of ids) {
+		if (verb === "disarm" && !channels.length) {
+			const r = disableHarness(DATA, harness);
+			console.log(`${r.ok ? "✓" : "✗"} disarm ${harness}`);
+			for (const row of r.results) if (!row.ok) console.log("  " + row.channel + ": " + row.error);
+			if (!r.ok) process.exitCode = 1;
+			continue;
 		}
-		const icon = done.length ? "✓" : "·";
-		if (done.length) armedAny += 1;
-		console.log(`${icon} ${verb} ${h.padEnd(11)} ${done.join(" · ") || "无可用通道"}${skip.length ? "  跳过: " + skip.join("；") : ""}`);
-	}
-
-	if (verb === "arm" && armedAny && channels.includes("shim")) {
-		const r = ensureUserPath();
-		console.log(r.changed ? `[path] ${r.dir} → 用户 PATH 最前（${r.how}）` : `[path] ${r.dir} 就位（${r.how}）`);
-	}
-	if (verb === "arm") {
-		if (!armedAny) {
-			console.log(`\n一个通道都没装上（${targets.join(", ")}）：上面“跳过”里写了每家为什么不行。`);
-		} else {
-			const h0 = targets[0];
-			const lines = [];
-			if (channels.includes("shim")) lines.push(`新开终端敲 ${h0} → 走 PATH 前置壳，注入生效`);
-			if (channels.includes("slash")) {
-				lines.push(
-					h0 === "pi"
-						? "裸敲 pi 不注入（只装了热切）；会话里打 /purge on 才改写，/purge status 看状态"
-						: h0 === "dsh"
-							? "dsh 会话里打 /purge 切开关（改 state.json，不产生模型消息）；三形态共用一份状态"
-							: "会话里打 /purge 才注入（它展开成用户消息）",
-				);
-			}
-			if (channels.includes("install")) lines.push("改了配置文件：连别人启动的、GUI 里点开的也生效（那家重启后生效）");
-			console.log("\n下一步：\n" + lines.map((l) => "  - " + l).join("\n") + "\n复核：agent-purge status");
+		for (const channel of channels.length ? channels : ["install", "shim", "slash"]) {
+			if (verb === "arm" && !capsFor(harness)[channel]?.ok) { console.log(`- ${harness}:${channel} — ${capsFor(harness)[channel]?.why}`); continue; }
+			const r = changeChannel(DATA, { harness, channel, enabled: verb === "arm", force: rest.includes("--force") });
+			console.log(`${r.ok ? "✓" : "✗"} ${verb} ${harness}:${channel} — ${r.error ?? r.action ?? r.message}`);
+			if (!r.ok) process.exitCode = 1;
+			if (r.ok && verb === "arm" && channel === "shim") shim = true;
 		}
 	}
+	if (shim) { const { ensureUserPath } = await import("../lib/shim.mjs"); const r = ensureUserPath(); console.log("[path] " + r.how); }
 }
 
 async function slashCmd(rest) {
-	const { installSlash, uninstallSlash, slashStatus } = await import("../lib/slashes.mjs");
-	const { createStore } = await import("../lib/personas.mjs");
-	const store = createStore(DATA);
-	const id = rest[0];
-	if (!id || id === "status") {
-		const rows = slashStatus(DATA);
-		const live = rows.filter((s) => s.offered);
-		live.forEach((s) => {
-			console.log(`${s.installed ? "✓" : " "} ${s.id.padEnd(9)} ${s.layer.padEnd(4)} ${s.trigger.padEnd(22)} persona=${s.personaId ?? "-"}`);
-			console.log(`   ${s.note}`);
-		});
-		// 只列“能把内容写进 system 数组”的；user 层不要再诱人点
-		const dead = rows.filter((s) => !s.offered);
-		if (dead.length) {
-			const still = dead.filter((s) => s.installed).map((s) => s.id);
-			console.log(`\n已下线（user 层，压不住系统提示词）：${dead.map((s) => s.id).join(", ")}`);
-			if (still.length) console.log(`旧文件还在盘上：agent-purge slash off ${still.join(" ")}`);
-		}
+	const { slashStatus } = await import("../lib/slashes.mjs");
+	const verb = rest[0];
+	if (!verb || verb === "status") {
+		for (const row of slashStatus(DATA)) console.log(`${row.installed ? "✓" : "·"} ${row.id}: ${row.note} → ${row.file}`);
 		return;
 	}
-	if (id === "off") {
-		const target = rest[1];
-		const ids =
-			target && target !== "--all"
-				? rest.slice(1).filter((x) => !x.startsWith("-"))
-				: slashStatus(DATA).filter((s) => s.installed).map((s) => s.id);
-		if (!ids.length) console.log("没有装着的 /purge");
-		ids.forEach((h) => {
-			const r = uninstallSlash(h, DATA);
-			if (!r.error) {
-				setArmed(DATA, h, "slash", false);
-				console.log(`✓ 已移除 /purge ${h}${r.removed?.length ? " → " + r.removed.join(", ") : "（本来就没有）"}`);
-			}
-		});
+	const enabled = verb !== "off";
+	const named = (enabled ? rest : rest.slice(1)).filter(v => !v.startsWith("-"));
+	const ids = named.length ? named : slashStatus(DATA).filter(s => enabled ? s.offered : s.installed).map(s => s.id);
+	for (const harness of ids) {
+		const r = changeChannel(DATA, { harness, channel: "slash", enabled });
+		console.log(`${r.ok ? "✓" : "✗"} /purge ${harness} — ${r.error ?? r.action ?? r.message}`);
+		if (!r.ok) process.exitCode = 1;
+	}
+}
+
+async function projectCmd(rest) {
+	const { projectStatus, projectTargets, gitHint } = await import("../lib/project.mjs");
+	const dir = resolve(flag("--dir", process.cwd()));
+	const verb = ["on", "off", "status"].includes(rest[0]) ? rest[0] : "status";
+	const named = [];
+	for (let i = rest[0] === verb ? 1 : 0; i < rest.length; i++) {
+		if (rest[i] === "--dir") { i++; continue; }
+		if (!rest[i].startsWith("-")) named.push(rest[i]);
+	}
+	const capable = Object.keys(projectTargets);
+	if (verb === "status") {
+		const rows = projectStatus(dir, DATA);
+		console.log(`项目目录：${dir}`);
+		for (const r of rows) console.log(`${r.on || r.selected ? "✓" : " "} ${r.id.padEnd(9)} ${r.file}${r.selected && !r.on ? "（已选，尚未写入）" : r.hasBlock && !r.on ? "（有块但不是我们记的）" : ""}`);
 		return;
 	}
-	const targets = id === "--all" ? slashStatus(DATA).filter((s) => s.offered).map((s) => s.id) : [id];
-	const pid = store.activeId();
-	if (!pid) die("还没有 persona：先 agent-purge use <id>");
-	for (const h of targets) {
-		const r = installSlash(h, DATA, { personaId: pid, personaBody: store.read(pid).body.trim() });
-		if (r.error) {
-			console.log(`- ${h}: ${r.error}`);
+	if (verb !== "on" && verb !== "off") die(`用法：agent-purge project on|off [harness…] [--dir X]`);
+	const ids = named.length
+		? named
+		: verb === "on"
+			? Object.keys(loadState(DATA).state.armed ?? {}).filter((h) => capable.includes(h))
+			: projectStatus(dir, DATA).filter((r) => r.on || r.selected).map((r) => r.id);
+	if (!ids.length) {
+		console.log(verb === "on" ? `没有已接管的项目级 harness（可用: ${capable.join(", ")}）；点名写：agent-purge project on pi` : "这个目录里没有托管块");
+		return;
+	}
+	for (const h of ids) {
+		if (!capable.includes(h)) {
+			console.log(`- ${h}: 没有项目级规则文件`);
 			continue;
 		}
-		setArmed(DATA, h, "slash", true);
-		console.log(`✓ /purge → ${h}（${r.layer} 层）${r.file}`);
-		console.log(`   ${r.note}`);
+		const r = changeChannel(DATA, { harness: h, channel: "project", enabled: verb === "on", dir });
+		if (!r.ok) {
+			console.log(`✗ ${h}: ${r.error ?? "写入失败"}`);
+			continue;
+		}
+		console.log(`${verb === "on" ? "✓" : "-"} ${h} ${r.file}${r.action ? `（${r.action}）` : ""}`);
+		if (verb === "on") r.hint = gitHint(h, dir);
+		if (r.hint) console.log(`   注意：${r.hint}`);
 	}
 }
 
@@ -584,21 +653,42 @@ async function lsCmd() {
 	console.log(`\n* = active（agent-purge use <id> 切换）`);
 }
 
-function webCmd() {
+async function webCmd() {
 	const port = Number(flag("--port", "7788"));
+	if (!Number.isInteger(port) || port < 0 || port > 65535) die("端口必须为 0..65535 的整数");
+	const noOpen = argv.includes("--no-open");
+	const url = `http://127.0.0.1:${port}`;
+	const { openAppWindow } = await import("../lib/window.mjs");
+
 	// --detach：脱离当前终端后台存活，日志丢弃
 	if (argv.includes("--detach")) {
-		const child = spawn(process.execPath, [join(ROOT, "web", "server.mjs"), "--serve", String(port)], {
+		if (port === 0) die("--detach 需要明确端口；随机端口请用前台 web --port 0 --no-open");
+		// 源码态 execPath 是 node，得连脚本路径一起给；编译态 execPath 就是 exe 本体
+		const serve = isCompiled() ? ["--serve", String(port)] : [join(ROOT, "web", "server.mjs"), "--serve", String(port)];
+		const child = spawn(process.execPath, serve, {
 			detached: true,
 			stdio: "ignore",
 			shell: false,
+			windowsHide: true,
 			env: { ...process.env, AGENT_PURGE_HOME: DATA },
 		});
 		child.unref();
-		console.log(`agent-purge web 已在后台启动 → http://127.0.0.1:${port}（pid ${child.pid}）`);
+		console.log(`agent-purge 后台启动请求已发送 → ${url}（pid ${child.pid}；请确认服务可连接）`);
+		if (!noOpen) {
+			const res = openAppWindow(url);
+			if (res.mode === "app") console.log(`已启动独立桌面窗口（${res.browser}）`);
+		}
 		process.exit(0);
 	}
-	return import("../web/server.mjs").then(({ serveWeb }) => serveWeb(port));
+
+	const server = serveWeb(port);
+	if (!noOpen) {
+		server.once("listening", () => {
+			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`);
+			if (res.mode === "app") console.log(`✓ 已作为独立桌面窗口打开（无标签/地址栏，原生客户端体验）`);
+		});
+	}
+	return server;
 }
 
 // ── 其余 ──────────────────────────────────────────────────────────────────
@@ -732,12 +822,19 @@ function help() {
 
 一句话：先「选」，再「用」。选一次，之后所有入口都跟着变。
 
-① 选（写 state.json，全工具共用，改完立刻生效）
-   agent-purge use <id>           换 persona（ls 看有哪些，* = 当前）
-   agent-purge mode <m>           strict(只发人设) / replace(默认) / append / off
+① 选（写共享配置并同步；已加载动态插件下一轮读取，静态入口需新会话）
+   agent-purge use <id>           换 persona（ls 看有哪些，* = 当前；自动刷新已武装的常驻落点）
+   agent-purge use <id> --for <h> 只给某一家换 persona；--for <h> follow 恢复跟随全局
+   agent-purge sync               只刷新常驻落点/命令文件，不换 persona
+   agent-purge mode <m>           replace(换身份, 默认) / strict(只留人设) / append(追加) / off
+   agent-purge mode <m> --for <h> 只给某一家设模式；--for <h> follow 恢复跟随全局
+   agent-purge pause              暂停并撤下静态托管内容，保留通道选择
+   agent-purge resume             恢复上次模式与原选择范围
+   agent-purge clean              从所有 harness 彻底拔出插件与接管命令并还原配置
+   agent-purge update             检查 GitHub Release 最新版本与下载更新
    agent-purge web                浏览器里点选 harness · persona · mode
 
-② 用（三种入口，效果一样）
+② 用（命令入口与常驻配置的生效时机不同）
    agent-purge                   裸敲 = 跑 default 里那家（web 选过就用选过的）
    agent-purge <h> [--ask "…"]   指定一家启动；--dry-run 只看命令，-- 后面透传
    <h>                           web / arm 之后直接敲命令名，就已经注入
@@ -749,6 +846,11 @@ function help() {
    agent-purge arm <h> --install            只做配置文件常驻
    agent-purge arm <h> --slash              只做会话内 /purge
    agent-purge disarm <h>|--all             以上全部撤掉；不带 <h> 就是所有 harness
+   agent-purge clean                        按账本撒回所有写入（保留 state 与人设）
+   agent-purge self-uninstall --yes         撤回写入 + 永久删除数据目录（先备份人设）
+   agent-purge self-uninstall --dry-run     只预览将撤销和删除的项目
+   agent-purge project on|off [<h>…]        项目级：写当前目录的 AGENTS.md / CLAUDE.md
+     [--dir X]                              托管块；只影响这个项目，删块即逐字节还原
 
    注：--all 是总电源（state.json 的 default.mode）。带 <h> 时只撤那家，
        但同样把总电源关掉——不然裸敲 agent-purge、agent-purge <h> 照样注入。
@@ -757,6 +859,7 @@ function help() {
 ④ 看
    agent-purge status             一张表：每家的 shim / slash / install / 能做什么
    agent-purge ls                 persona 列表
+   agent-purge verify [harness…]  实测：本机真跑一次，看人设到底进没进 system（写 verification/latest.json）
    agent-purge matrix             能力矩阵（matrix.json）
    agent-purge armor [...]        plan|preflight|run|judge 实测热力图
    agent-purge doctor             本机探测（哪家装了、版本）
@@ -764,14 +867,37 @@ function help() {
 通道语义
    shim     在 PATH 最前放同名 cmd，裸敲即经 agent-purge 启动（sys 层注入）
    install  改 harness 自己的配置/插件文件（连别人启动的它也会带人设）
-slash    会话里打 /purge 换提示词：**pi 和 dsh 都能做**（pi 的扩展钩子 / dsh 的 cordis 插件，真 sys 层、热切换）
-其他家没有这个能力：/purge 展开成用户消息，bench 实测 0/2 无效，所以不提供
-   注入强度：只有 sys 层算。user 层（上下文块/用户消息）在 codex/claude/opencode/grok/hermes 实测都是 0/2，一律不提供。
+   slash    pi / omp / dsh 通过扩展提供 /purge，会话下一轮读取
+   project  写当前项目根的 AGENTS.md / CLAUDE.md（和全局块同时开会两份都进）
+   热切     pi / omp / dsh / opencode / opencode2 已验证同会话 A→B→strict→off
+            首次安装或更新插件代码需重新加载；其他启动参数入口需新会话
+   证据     npm run test:harness；Web「验证与诊断」展示请求角色与宿主残留
+            配置写入不代表当前会话已读取；Codex 实际请求角色为 developer。
 
-harness: pi, opencode, opencode2, dsh, codex, claude, grok, omp, hermes, zcode, antigravity, qoder, workbuddy, codebuddy
+harness: pi, opencode, opencode2, dsh, codex, claude, grok, omp, hermes, zcode, antigravity, codebuddy
           opencode2 = @opencode/cli 2.x（v2 插件 API），dsh = DeepSeek Harness（cordis 插件，desktop/web/headless 三形态）。
-         qoder / workbuddy 无 prompt 组装入口（提示词在服务端），只能改上下文规则文件。
 `);
+}
+
+/** [cmd] 只用于复现启动参数；人设正文不能整段落进终端/CI 日志。 */
+function previewArgs(args) {
+	const secret = new Set(["--system-prompt", "--append-system-prompt", "--system-prompt-override", "--rules"]);
+	const out = [];
+	for (let i = 0; i < args.length; i++) {
+		const a = String(args[i]);
+		if (a === "-c" && typeof args[i + 1] === "string" && args[i + 1].startsWith("developer_instructions=")) {
+			out.push(a, `developer_instructions=<persona ${args[i + 1].length} 字>`);
+			i++;
+			continue;
+		}
+		if (secret.has(a) && args[i + 1] !== undefined) {
+			out.push(a, `<persona ${String(args[i + 1]).length} 字>`);
+			i++;
+			continue;
+		}
+		out.push(a.includes(" ") ? JSON.stringify(a) : a);
+	}
+	return out;
 }
 
 function die(message) {

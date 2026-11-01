@@ -1,12 +1,10 @@
 // 假 DOM + 假 magpie，直接跑真实的 page/app.js。
 // 真页面跑在 magpie 沙箱里，这里只验逻辑：搜索过滤、options 合并（agents 不丢）、
-// 连点不丢、保存失败回滚。跑法：node magpie-plugin/test-page.mjs
+// 连点不丢、保存失败回滚。跑法：node test/magpie/page.test.mjs
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 
-const appSrc = readFileSync(join(fileURLToPath(new URL(".", import.meta.url)), "page/app.js"), "utf8");
+const appSrc = readFileSync(new URL("../../magpie-plugin/page/app.js", import.meta.url), "utf8");
 
 class Node {
 	constructor(tag = "div") {

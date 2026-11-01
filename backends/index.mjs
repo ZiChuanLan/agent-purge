@@ -1,11 +1,24 @@
 // 每家的 build() 是纯函数：只描述"怎么启动"，不 spawn、不写盘。
 // setup/cleanup 由入口统一调用，保证能按哈希回滚。
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { SESSION as DSH_SESSION, addPlugin, removePlugin, sessionSource } from "../lib/dsh.mjs";
-import { opencodePlugins } from "../lib/persist.mjs";
+import { SESSION as DSH_SESSION, addPlugin, sessionSource } from "../lib/dsh.mjs";
+import { opencodePlugins, targets } from "../lib/persist.mjs";
+import { opencodeSource } from "../lib/opencode.mjs";
+import { dataHome } from "../lib/home.mjs";
+import { swapFile } from "../lib/restore.mjs";
+
+function temporaryPlugin(harness, file, root, args) {
+ let undo = null;
+ return { cmd: harness, args, runtime: true,
+  setup: () => { mkdirSync(join(file, ".."), { recursive: true }); if (!undo) undo = swapFile(file, opencodeSource(root, harness, { temporary: true })); },
+  cleanup: () => { if (undo) { undo(); undo = null; } },
+ };
+}
 
 const inline = (text) => text.replace(/\s+$/, "");
+// codex 的 -c 值按 TOML 解析：整段人设必须包成 basic string，否则空格/引号/换行会解析失败。
+const tomlStr = (value) => JSON.stringify(String(value));
 
 export const backends = {
 	// pi：命令行已试过 --system-prompt，但 pi.cmd 走 cmd.exe，10K 人设会撞 8191 上限（实测“命令行太长”）。
@@ -19,8 +32,8 @@ export const backends = {
 			mode === "off"
 				? [...args]
 				: mode === "append"
-					? ["-c", `developer_instructions=${inline(personaText)}`, ...args]
-					: ["-c", `model_instructions_file=${personaPath.replace(/\\/g, "/")}`, ...args],
+					? ["-c", `developer_instructions=${tomlStr(inline(personaText))}`, ...args]
+					: ["-c", `model_instructions_file=${tomlStr(personaPath.replace(/\\/g, "/"))}`, ...args],
 	}),
 
 // CodeBuddy（腾讯云，npm @tencent-ai/codebuddy-code）：原生整段替换，无残留
@@ -61,82 +74,25 @@ export const backends = {
 			? { cmd: "omp", args: [...args] }
 			: {
 					cmd: "omp",
-					args: ["--system-prompt", inline(personaText), ...args],
+					args: [mode === "append" ? "--append-system-prompt" : "--system-prompt", inline(personaText), ...args],
 					residueHint: "MCP tool routes 仍会追加（10K 量级），关掉 MCP server 可缩",
 				},
 
-	// opencode 靠 cwd 下 .opencode/plugin/*.ts 发现插件，必须原地 splice
-	opencode: ({ personaText, mode, cwd, args }) => {
+	// 临时插件与常驻插件不共享许可；人设正文不编译进孤儿文件。
+	opencode: ({ mode, cwd, args, root = dataHome() }) => {
 		if (mode === "off") return { cmd: "opencode", args: [...args] };
-		const dir = join(cwd, ".opencode", "plugin");
-		const file = join(dir, "agent-purge.ts");
-		const src = `export const AgentPurge = async () => ({
-  "experimental.chat.system.transform": async (_input, output) => {
-    ${mode === "append" ? `output.system.push(${JSON.stringify(inline(personaText))});` : `output.system.splice(0, output.system.length, ${JSON.stringify(inline(personaText))});`}
-  },
-});
-`;
-		return {
-			cmd: "opencode",
-			note: `[plugin] .opencode/plugin/agent-purge.ts（${mode === "append" ? "push" : "原地 splice"} output.system）`,
-			args,
-			setup: () => {
-				mkdirSync(dir, { recursive: true });
-				writeFileSync(file, src);
-			},
-			cleanup: () => rmSync(file, { force: true }),
-		};
+		return temporaryPlugin("opencode", join(cwd, ".opencode", "plugin", "agent-purge.ts"), root, args);
 	},
-
-	// dsh（DeepSeek Harness）：CLI 只能起 headless（desktop 被 Electron 独占）。
-	// 一次性注入用 agent-purge-session 这个独立插件名，不会覆盖常驻的 agent-purge。
-	dsh: ({ personaText, mode, args }) => {
+	dsh: ({ mode, args, root = dataHome() }) => {
 		if (mode === "off") return { cmd: "dsh", args: ["--profile", "headless", ...args] };
-		return {
-			cmd: "dsh",
-			args: ["--profile", "headless", ...args],
-			note: `[plugin] ${DSH_SESSION}（三个 profile；patch: - insert）`,
-			residueHint: "desktop profile 由 Electron 独占，一次性注入只对本次 CLI 进程有效",
-			setup: () => addPlugin(DSH_SESSION, sessionSource(personaText, mode)),
-			cleanup: () => removePlugin(DSH_SESSION),
-		};
+		let temporary = null;
+		return { cmd: "dsh", args: ["--profile", "headless", ...args], runtime: true,
+			setup: () => { if (!temporary) temporary = addPlugin(DSH_SESSION, sessionSource("", mode, root), { temporary: true }); },
+			cleanup: () => { if (temporary) { temporary.cleanup(); temporary = null; } } };
 	},
-
-	// opencode v2（@opencode/cli，bin 名 opencode2）：新插件 API，V1 的
-	// experimental.chat.system.transform 在 2.x 已废。插件放全局 plugins 目录。
-	opencode2: ({ personaText, mode, args }) => {
-		if (mode === "off") return { cmd: "opencode2", args: [...args] };
-		const dir = opencodePlugins();
-		// 与 V1 常驻插件（agent-purge.ts）分开，否则一次性注入会顶掉常驻接管
-		const file = join(dir, "agent-purge-v2-session.ts");
-		const persona = inline(personaText);
-		const mutate =
-			mode === "append"
-				? `event.system.push({ type: "text", text: PERSONA });`
-				: `event.system.splice(0, event.system.length, { type: "text", text: PERSONA });`;
-		const src = `// 由 agent-purge 生成；删除本文件即恢复宿主人设。
-const PERSONA = ${JSON.stringify(persona)};
-
-	export default {
-  id: "agent-purge-v2-session",
-  async setup(ctx) {
-    await ctx.session.hook("context", (event) => {
-      ${mutate}
-    });
-  },
-};
-`;
-		const write = () => {
-			mkdirSync(dir, { recursive: true });
-			writeFileSync(file, src);
-		};
-		return {
-			cmd: "opencode2",
-			args,
-			note: `[plugin] ${file.replace(/\\/g, "/")}（ctx.session.hook("context") 改 event.system）`,
-			setup: write,
-			cleanup: () => rmSync(file, { force: true }),
-		};
+	opencode2: ({ mode, args, root = dataHome() }) => {
+		if (mode === "off") return { cmd: "opencode2", args: [...args], privateServer: true };
+		return { ...temporaryPlugin("opencode2", join(opencodePlugins(), "agent-purge-v2-session.ts"), root, args), privateServer: true };
 	},
 
 	// 需要落盘或调用方配合，CLI 不代劳，只给可复制的配方
@@ -148,14 +104,26 @@ const PERSONA = ${JSON.stringify(persona)};
 		],
 	}),
 
-	hermes: () => ({
-		manual: [
-			"hermes 从 $HERMES_HOME/SOUL.md 取身份段。",
-			"配方: 复制现有 HERMES_HOME 到 .sandbox/hermes-home，覆盖 SOUL.md，再 HERMES_HOME=<该目录> 启动。",
-			"必须加 --ignore-rules: Hermes 自带的 rules 层会把人设顶回去（实测不加时它自称 Hermes 并明说“这一条我不照办”，加了立刻完全采纳）。",
-			"注意首次启动会自装 Python 依赖（约 80 秒）。",
-		],
-	}),
+	// 交互式：SOUL.md 是唯一身份入口。启动前写入、退出还原（在 UI 里接管着就一直留着）。
+	// 注意它只在会话首次/重建时读 SOUL.md：续会话从 session DB 还原 system 提示词，改文件不当场生效
+	// （源码 agent/conversation_loop.py::_restore_or_build_system_prompt）。
+	hermes: ({ personaText, personaPath, mode, args = [] }) => {
+		let undo = null;
+		return {
+			cmd: "hermes",
+			args: [...(mode === "off" ? [] : ["--ignore-rules"]), ...args],
+			note: "SOUL.md 仅供新会话读取；退出后恢复启动前的原字节，不更改常驻选择",
+			setup: () => {
+				if (mode === "off" || undo) return;
+				const file = targets.hermes.file();
+				mkdirSync(join(file, ".."), { recursive: true });
+				const original = existsSync(file) ? readFileSync(file, "utf8") : "";
+				const body = personaText ?? readFileSync(personaPath, "utf8");
+				undo = swapFile(file, mode === "append" ? original + "\n\n" + body : body);
+			},
+			cleanup: () => { if (undo) { undo(); undo = null; } },
+		};
+	},
 
 	antigravity: () => ({
 		manual: [
@@ -163,9 +131,6 @@ const PERSONA = ${JSON.stringify(persona)};
 			"闭源 App 的身份句在二进制里，只能等长替换；改动会使签名失效、更新被覆盖，所以默认不做。",
 		],
 	}),
-
-	qoder: ({ reason }) => ({ unsupported: reason }),
-	workbuddy: ({ reason }) => ({ unsupported: reason }),
 };
 
 
@@ -189,32 +154,32 @@ export const oneshots = {
 	}),
 	omp: ({ prompt, personaText, mode }) => ({
 		cmd: "omp",
-		args: ["-p", ...(mode === "off" ? [] : ["--system-prompt", inline(personaText)]), prompt],
+		args: ["-p", ...(mode === "off" ? [] : [mode === "append" ? "--append-system-prompt" : "--system-prompt", inline(personaText)]), prompt],
 	}),
 	codex: ({ prompt, personaPath, personaText, mode }) => ({
 		cmd: "codex",
 		args: [
 			...(mode === "off"
 				? []
-				: ["-c", mode === "append" ? `developer_instructions=${inline(personaText)}` : `model_instructions_file=${personaPath.replace(/\\/g, "/")}`]),
+				: ["-c", mode === "append" ? `developer_instructions=${tomlStr(inline(personaText))}` : `model_instructions_file=${tomlStr(personaPath.replace(/\\/g, "/"))}`]),
 			"exec",
 			prompt,
 		],
 	}),
-	opencode: ({ prompt, personaText, mode, cwd }) => {
+	opencode: ({ prompt, personaText, mode, cwd, root }) => {
 		if (mode === "off") return { cmd: "opencode", args: ["run", prompt] };
-		const b = backends.opencode({ personaText, mode, cwd, args: ["run", prompt] });
+		const b = backends.opencode({ personaText, mode, cwd, root, args: ["run", prompt] });
 		return b;
 	},
-	opencode2: ({ prompt, personaText, mode }) => {
-		if (mode === "off") return { cmd: "opencode2", args: ["run", prompt] };
-		const b = backends.opencode2({ personaText, mode, args: ["run", prompt] });
+	opencode2: ({ prompt, personaText, mode, root }) => {
+		if (mode === "off") return { cmd: "opencode2", args: ["run", prompt], privateServer: true };
+		const b = backends.opencode2({ personaText, mode, root, args: ["run", prompt] });
 		return b;
 	},
-	dsh: ({ prompt, personaText, mode }) => {
+	dsh: ({ prompt, personaText, mode, root }) => {
 		if (mode === "off") return { cmd: "dsh", args: ["--profile", "headless", prompt] };
 		// backends.dsh 会自己补 --profile headless，这里只给 prompt（否则重复）
-		return backends.dsh({ personaText, mode, args: [prompt] });
+		return backends.dsh({ personaText, mode, root, args: [prompt] });
 	},
 	zcode: ({ prompt }) => ({
 		cmd: "zcode",
@@ -235,10 +200,5 @@ export const oneshots = {
 					: ["--system-prompt-file", personaPath]),
 		],
 	}),
-	hermes: ({ prompt, mode }) => ({
-		cmd: "hermes",
-		// --ignore-rules 是关键：不加时 Hermes 自带 rules 层会把人设顶回去（模型自称 Hermes、明说“不照办”）。
-		args: ["-z", prompt, ...(mode === "off" ? [] : ["--ignore-rules"])],
-		note: "身份段来自 $HERMES_HOME/SOUL.md；注入时必须带 --ignore-rules，关电源时不带",
-	}),
+	hermes: ({ prompt, personaText, personaPath, mode }) => backends.hermes({ personaText, personaPath, mode, args: ["-z", prompt] }),
 };

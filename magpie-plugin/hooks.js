@@ -13,7 +13,7 @@
 //            没有各家启动参数，比不上 agent-purge 那套 per-harness 处理，想要干净就用 strict）
 //
 // 选项（magpie plugin options agent-purge '{"mode":"append"}'）：
-//   mode     覆盖 state.json 里的模式
+//   mode     覆盖启用状态下的模式；总暂停/分家停用始终优先
 //   persona  用哪个人设 id（默认 state.json 的当前人设）
 //   agents   只对这些 magpie agent 生效，如 ["claude","codex"]；不给 = 全部
 //   inlinePersonas  页面导入的人设 [{id,name,text}]；和 personas/<id>.md 同名时以它为准
@@ -36,7 +36,8 @@ const stripFront = (raw) => String(raw).replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?
 // 每个请求只有 1 秒预算，所以只在 state.json / 人设文件的 mtime 变了才读盘。
 let cache = { key: "", value: { mode: "off", text: "" } };
 
-function current(personaId, inline = []) {
+const validId = id => typeof id === 'string' && id.length <= 64 && /^[a-zA-Z0-9_][a-zA-Z0-9._-]*$/.test(id) && !id.includes('..');
+function current(personaId, inline = [], agent) {
 	const home = dataHome();
 	const stateFile = join(home, "state.json");
 	let sst = null;
@@ -48,21 +49,27 @@ function current(personaId, inline = []) {
 
 	let mode = "off";
 	let active = null;
+	let bound = false;
 	if (sst) {
 		try {
 			const state = JSON.parse(readFileSync(stateFile, "utf8"));
-			active = typeof state?.persona === "string" ? state.persona : null;
-			if (MODES.includes(state?.default?.mode)) mode = state.default.mode;
-		} catch {
-			/* 坏文件不动它，请求原样放行 */
-		}
+			if (!state || typeof state !== 'object' || Array.isArray(state)) return { blocked: true };
+			bound = true;
+			const override = state.overrides?.[agent];
+			if (state.default?.mode === 'off' || override?.mode === 'off' || state.disabledHarnesses?.includes(agent)) return { blocked: true };
+			active = override?.persona ?? state.persona;
+			mode = override?.mode ?? state.default?.mode ?? 'replace';
+			if (!MODES.includes(mode)) return { blocked: true };
+		} catch { return { blocked: true }; }
 	}
 
 	const id = personaId || active;
-	if (!id) return { mode, text: "" };
+	if (!validId(id)) return { mode, text: "", bound };
 	// 页面导入的人设存在 options 里：命中就不读盘（每个请求只有 1 秒预算）
 	const hit = inline.find((p) => p && typeof p === "object" && p.id === id && typeof p.text === "string" && p.text.trim());
-	if (hit) return { mode, text: stripFront(hit.text) };
+	if (hit) return { mode, text: stripFront(hit.text), bound };
+	// 没有 state.json 的独立插件只接受显式导入的人设，不借磁盘残留自动启用。
+	if (!bound) return { mode: 'off', text: '' };
 	const file = join(home, "personas", `${id}.md`);
 	let pst = null;
 	try {
@@ -118,8 +125,9 @@ function chatSystem(body, persona, mode) {
 	const msgs = body.messages;
 	const i = msgs.findIndex((m) => m?.role === "system" || m?.role === "developer");
 	if (mode === "strict") {
-		if (i >= 0) msgs[i] = { role: msgs[i].role, content: persona };
-		else msgs.unshift({ role: "system", content: persona });
+		const first = i >= 0 ? { ...msgs[i], content: persona } : { role: 'system', content: persona };
+		body.messages = msgs.filter(m => m?.role !== 'system' && m?.role !== 'developer');
+		body.messages.splice(i < 0 ? 0 : Math.min(i, body.messages.length), 0, first);
 		return;
 	}
 	if (i < 0) {
@@ -155,29 +163,54 @@ function geminiSystem(body, persona, mode) {
 
 const REWRITE = { anthropic: anthropicSystem, chat: chatSystem, responses: responsesSystem, gemini: geminiSystem };
 
+// 只回滚这个 hook 确切产出的完整请求；不根据人设片段或用户字面标签猜测来源。
+const originals = new Map();
+function restoreOwn(body, scope) {
+	const key = scope + JSON.stringify(body), before = originals.get(key);
+	if (!before) return false;
+	try {
+		const original = JSON.parse(before);
+		for (const name of Object.keys(body)) delete body[name];
+		Object.assign(body, original);
+		return true;
+	} catch { return false; }
+}
+function remember(before, body, scope) {
+	const serialized = JSON.stringify(body);
+	if (before === serialized || before.length + serialized.length > 2 * 1024 * 1024) return;
+	const after = scope + serialized;
+	if (originals.has(after) && originals.get(after) !== before) originals.set(after, null);
+	else originals.set(after, before);
+	while (originals.size > 64) originals.delete(originals.keys().next().value);
+}
+
 /** magpie 每请求调一次：返回对象 = 用改过的请求，返回 undefined = 原样放行。 */
 export async function onRequest(body, ctx) {
 	try {
-		if (!body || typeof body !== "object") return;
+		if (!body || typeof body !== "object" || Array.isArray(body)) return;
+		const scope = `${ctx?.protocol ?? ''}:${ctx?.agent ?? ''}:`;
+		const restored = restoreOwn(body, scope);
 		const opt = ctx?.options && typeof ctx.options === "object" ? ctx.options : {};
 		const inline = Array.isArray(opt.inlinePersonas) ? opt.inlinePersonas : [];
-		const cfg = current(typeof opt.persona === "string" ? opt.persona : null, inline);
+		const cfg = current(typeof opt.persona === "string" ? opt.persona : null, inline, ctx?.agent);
 		const mode = MODES.includes(opt.mode) ? opt.mode : cfg.mode;
-		if (mode === "off" || !cfg.text) {
+		if (cfg.blocked || mode === "off" || !cfg.text) {
 			ctx?.report?.("skipped", 0);
-			return;
+			return restored ? body : undefined;
 		}
 		const agents = Array.isArray(opt.agents) ? opt.agents : [];
 		if (agents.length && !agents.includes(ctx.agent)) {
 			ctx?.report?.("skipped", 0);
-			return;
+			return restored ? body : undefined;
 		}
 		const rewrite = REWRITE[ctx?.protocol];
 		if (!rewrite) {
 			ctx?.report?.("unavailable", 0);
 			return;
 		}
+		const before = JSON.stringify(body);
 		rewrite(body, cfg.text, mode);
+		remember(before, body, scope);
 		ctx?.report?.("ready", cfg.text.length);
 		return body;
 	} catch {

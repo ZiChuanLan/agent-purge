@@ -1,6 +1,6 @@
 {
   "name": "agent-purge",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "One persona, many coding agents: replace or inject system prompts across codex, claude, opencode (v1/v2), grok, omp, hermes, pi, zcode, dsh.",
   "type": "module",
   "bin": {
@@ -10,21 +10,43 @@
     "bin",
     "lib",
     "backends",
-    "web",
+    "web/server.mjs",
+    "web/ui.html",
+    "web/app.js",
+    "web/model.mjs",
+    "web/styles.css",
+    "web/assets",
     "bench",
     "matrix.json",
     "README.md",
+    "CONTRIBUTING.md",
+    "docs/usage.md",
+    "docs/compatibility.md",
+    "docs/architecture.md",
+    "docs/releasing.md",
+    "docs/LEGAL.md",
+    "docs/images",
+    "magpie-plugin/README.md",
     "LICENSE"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "build": "node scripts/build-js.mjs",
+    "build:js": "node scripts/build-js.mjs",
+    "build:setup": "node scripts/build-js.mjs && node scripts/build-setup.mjs",
+    "build:exe": "node scripts/build-exe.mjs",
     "web": "node bin/agent-purge.mjs web",
     "matrix": "node bin/agent-purge.mjs matrix",
     "detect": "node bin/agent-purge.mjs detect",
-    "test": "node magpie-plugin/selftest.mjs && node magpie-plugin/test-page.mjs && node test/harness-adapters.test.mjs && node test/regressions.test.mjs",
-    "prepack": "node -e \"require('node:fs').rmSync('personas/.build',{recursive:true,force:true})\""
+    "test": "node scripts/test.mjs",
+    "check:repo": "node scripts/check-repo.mjs",
+    "test:harness": "node bench/capture-system.mjs --hot",
+    "test:ui": "playwright test",
+    "test:package": "node scripts/check-package.mjs",
+    "test:artifacts": "node scripts/check-artifacts.mjs",
+    "release:checksums": "node scripts/release-checksums.mjs"
   },
   "keywords": [
     "system-prompt",
@@ -46,5 +68,9 @@
   "homepage": "https://github.com/ZiChuanLan/agent-purge#readme",
   "bugs": {
     "url": "https://github.com/ZiChuanLan/agent-purge/issues"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1"
   }
 }

@@ -287,22 +287,6 @@
 			"measuredVersion": "1.23.x",
 			"verify": "scan-asar.mjs / 二进制复扫"
 		},
-		"qoder": {
-			"class": "unsupported",
-			"override": false,
-			"inject": false,
-			"hotSwitch": false,
-			"patch": false,
-			"reason": "app.asar 内无身份句、无 prompt 组装；prompt 在服务端。只能改 .qoder/rules 这类上下文文件。"
-		},
-		"workbuddy": {
-			"class": "unsupported",
-			"override": false,
-			"inject": false,
-			"hotSwitch": false,
-			"patch": false,
-			"reason": "同上；支持 AGENTS.md / .workbuddy 规则文件，属上下文层。"
-		},
 		"codebuddy": {
 			"purgedSystemChars": null,
 			"measuredVersion": "2.171.0",

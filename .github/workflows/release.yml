@@ -1,0 +1,148 @@
+name: release
+
+# 发布只能由版本 tag 或维护者手动触发。
+# NPM_TOKEN 是 npm automation/granular token；GITHUB_TOKEN 只用于本仓库 Release。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已存在的发布 tag，例如 v0.2.11'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - run: npm run check:repo
+      - run: npm test
+      - run: npm run test:package
+
+  build:
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.4'
+      - run: npm ci --ignore-scripts
+      - name: Install Windows build tools
+        shell: pwsh
+        run: |
+          choco install mingw innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Toolchain installation failed' }
+          $mingw = 'C:\ProgramData\chocolatey\lib\mingw'
+          $gcc = Get-ChildItem -LiteralPath $mingw -Filter gcc.exe `
+            -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($gcc) { $gcc.DirectoryName >> $env:GITHUB_PATH }
+          'C:\ProgramData\chocolatey\bin' >> $env:GITHUB_PATH
+      - run: npm run build:setup
+      - run: npm run build:exe
+      - run: npm run test:artifacts
+      - name: Clean-runner install, run, uninstall and preserve user data
+        shell: pwsh
+        run: ./scripts/check-installer.ps1
+      - run: npm run release:checksums
+      - run: npm run test:package
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-assets
+          path: |
+            dist/agent-purge-*.zip
+            dist/agent-purge-*-setup.exe
+            dist/agent-purge.exe
+            dist/standalone-manifest.json
+            dist/SHA256SUMS.txt
+            out/package/*.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Verify tag and package version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$VERSION"
+          test -n "$NODE_AUTH_TOKEN"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Publish npm package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if npm view "agent-purge@$VERSION" version >/dev/null 2>&1; then
+            echo "agent-purge@$VERSION 已存在，跳过 npm publish"
+          else
+            npm publish "release-assets/out/package/agent-purge-$VERSION.tgz" \
+              --access public --provenance
+          fi
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" \
+              --title "agent-purge $VERSION" \
+              --generate-notes --verify-tag
+          gh release upload "$RELEASE_TAG" \
+            "release-assets/dist/agent-purge-$VERSION.zip" \
+            "release-assets/dist/agent-purge-$VERSION-setup.exe" \
+            "release-assets/dist/agent-purge.exe" \
+            "release-assets/dist/standalone-manifest.json" \
+            "release-assets/dist/SHA256SUMS.txt" \
+            --clobber

@@ -1,19 +1,40 @@
-# 本机状态
-state.json
-.sandbox/
-notes/
+# Dependencies and reproducible build output
+node_modules/
+/dist/
+/.build-entry.mjs
+*.tgz
+*.zip
+*.exe
+*.log
 
-# 私人 persona（仓库只带 lib/templates 里的中性模板）
-personas/
-
-# magpie 插件的人设清单按本机人设生成，不进仓库
+# Local user data; keep lib/templates/personas/ versioned
+/state.json
+/state-web.json
+/personas/
 magpie-plugin/page/personas.js
+.env
+.env.*
+!.env.example
 
-web/_err.log
-web/_out.log
+# Test output and one-off diagnostics
+/out/
+/coverage/
+/playwright-report/
+/test-results/
+/web/shots/
+/docs/evidence/
 
-# 验证产物（浏览器 dump / 断言输出）
-out/
+# Local agent sessions, experiments and notes
+/.pi/
+/.opencode/
+/.playwright-mcp/
+/.superdesign/
+/.sandbox/
+/.tmp/
+/notes/
 
-# Playwright MCP 产物
-.playwright-mcp/
+# Editor and OS caches
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc

@@ -1,12 +1,15 @@
 // 自测：四种 agent API × 四种模式，直接喂假的请求体，不依赖 magpie。
-//   node magpie-plugin/selftest.mjs
+//   node test/magpie/hooks.test.mjs
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const home = mkdtempSync(join(tmpdir(), "agent-purge-hook-"));
+const { isolate } = await import("../isolate.mjs");
+isolate(home);
 process.env.AGENT_PURGE_HOME = home;
+process.once("exit", () => rmSync(home, { recursive: true, force: true }));
 mkdirSync(join(home, "personas"), { recursive: true });
 writeFileSync(
 	join(home, "personas", "canary.md"),
@@ -14,7 +17,7 @@ writeFileSync(
 );
 writeFileSync(join(home, "state.json"), JSON.stringify({ v: 1, persona: "canary", default: { harness: "codex", mode: "strict" } }));
 
-const { onRequest } = await import("./hooks.js");
+const { onRequest } = await import("../../magpie-plugin/hooks.js");
 
 const PERSONA = "Your name is Canary-9f3a. Be terse.";
 const HOST = "You are Claude, made by Anthropic.\nUse the Read tool before editing.";
@@ -121,5 +124,35 @@ check("人设不存在放行", missing.system, HOST);
 // 坏请求体：放行，不抛
 assert.equal(await onRequest(null, ctx("anthropic")), undefined);
 assert.equal(await onRequest({ messages: "junk" }, ctx("chat", { mode: "append" })).then((r) => r?.messages?.[0]?.content ?? "none"), PERSONA);
+
+// 全局暂停高于 options，克隆后的请求也恢复；恢复后分家 off 仍优先。
+for (const protocol of Object.keys(bodies)) {
+  const original = bodies[protocol]();
+  const rewritten = structuredClone(original);
+  await onRequest(rewritten, ctx(protocol, { mode: 'strict' }));
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ persona: 'canary', default: { mode: 'off' }, overrides: { claude: { mode: 'strict' } } }));
+  const copied = structuredClone(rewritten);
+  await onRequest(copied, ctx(protocol, { mode: 'strict' }));
+  check(`${protocol} global off restores exact original`, JSON.stringify(copied), JSON.stringify(original));
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ persona: 'canary', default: { mode: 'replace' }, overrides: { claude: { mode: 'off' } } }));
+  const disabled = bodies[protocol]();
+  await onRequest(disabled, ctx(protocol, { mode: 'strict' }));
+  check(`${protocol} harness off beats plugin options`, JSON.stringify(disabled), JSON.stringify(original));
+  writeFileSync(join(home, 'state.json'), JSON.stringify({ persona: 'canary', default: { mode: 'strict' } }));
+}
+const many = { messages: [{ role: 'system', content: 'HOST_ONE' }, { role: 'developer', content: 'HOST_TWO' }, { role: 'user', content: '<agent-purge>USER_LITERAL</agent-purge>' }] };
+const beforeMany = JSON.stringify(many);
+await onRequest(many, ctx('chat', { mode: 'strict' }));
+check('chat strict removes every privileged host message', many.messages.filter(m => ['system','developer'].includes(m.role)).length, 1);
+await onRequest(many, ctx('chat', { mode: 'off' }));
+check('chat off restores all original messages', JSON.stringify(many), beforeMany);
+const traversal = bodies.anthropic();
+assert.equal(await onRequest(traversal, ctx('anthropic', { mode: 'strict', persona: '../secret', inlinePersonas: [{id:'../secret',text:'BAD'}] })), undefined);
+check('traversal persona remains untouched', traversal.system, HOST);
+writeFileSync(join(home, 'state.json'), '{bad');
+assert.equal(await onRequest(bodies.anthropic(), inlined()), undefined);
+rmSync(join(home, 'state.json'));
+const independent = bodies.anthropic(); await onRequest(independent, inlined());
+check('standalone explicit inline persona remains supported', systemOf.anthropic(independent), 'Say only OK.');
 
 console.log(`ok — ${n} 项断言通过`);
