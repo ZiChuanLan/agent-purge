@@ -479,6 +479,71 @@ $('harness-list').addEventListener('change', e => {
 $('default-form').addEventListener('submit', e => { e.preventDefault(); operation(async () => { const result = await api('defaults', { harness: $('default-harness').value || null }); await refresh(); announce(result, '默认启动设置已保存，应用范围未改变。'); }); });
 $('edit-current').addEventListener('click', () => { openEditor(draft.persona); navigate('library'); });
 $('new-persona').addEventListener('click', () => openEditor(''));
+
+// 外部拉取人设
+const importDialog = $('import-dialog');
+const importStatus = $('import-status');
+const importSourceInput = $('import-source');
+const startImportBtn = $('start-import');
+
+$('pull-personas')?.addEventListener('click', () => {
+  if (!importDialog) return;
+  if (!importSourceInput.value.trim()) {
+    importSourceInput.value = 'ZiChuanLan/some-magic';
+  }
+  importStatus.hidden = true;
+  importStatus.className = 'import-status';
+  importStatus.textContent = '';
+  startImportBtn.disabled = false;
+  startImportBtn.textContent = '开始拉取';
+  importDialog.showModal();
+});
+
+$('close-import')?.addEventListener('click', () => importDialog?.close());
+$('cancel-import')?.addEventListener('click', () => importDialog?.close());
+
+importDialog?.addEventListener('click', e => {
+  const pill = e.target.closest('[data-preset]');
+  if (pill) {
+    importSourceInput.value = pill.dataset.preset;
+    importSourceInput.focus();
+  }
+});
+
+$('import-form')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const source = importSourceInput.value.trim();
+  if (!source) return;
+  const overwrite = $('import-overwrite').checked;
+  startImportBtn.disabled = true;
+  startImportBtn.textContent = '正在拉取…';
+  importStatus.hidden = false;
+  importStatus.className = 'import-status';
+  importStatus.textContent = `正在从 ${source} 拉取人设…`;
+
+  try {
+    const res = await api('persona/import', { source, overwrite });
+    if (!res.ok) throw new Error(res.error || '拉取失败');
+    const { total = 0, imported = [] } = res.result || {};
+    importStatus.className = 'import-status success';
+    const names = imported.map(x => x.name || x.id).slice(0, 3).join('、');
+    const suffix = imported.length > 3 ? '等' : '';
+    const detail = names ? `（${names}${suffix}）` : '';
+    importStatus.textContent = `✓ 成功导入 ${total} 个人设${detail}！`;
+    await refresh();
+    notify(`成功拉取 ${total} 个人设。`);
+    setTimeout(() => {
+      importDialog?.close();
+    }, 1200);
+  } catch (err) {
+    importStatus.className = 'import-status error';
+    importStatus.textContent = `✗ 导入失败：${err.message}`;
+    notify(`人设导入失败：${err.message}`, 'error');
+  } finally {
+    startImportBtn.disabled = false;
+    startImportBtn.textContent = '开始拉取';
+  }
+});
 $('persona-search').addEventListener('input', renderPersonas);
 $('persona-list').addEventListener('click', e => { const el = e.target.closest('[data-persona]'); if (el) openEditor(el.dataset.persona); });
 $('editor-form').addEventListener('input', renderEditorStatus);

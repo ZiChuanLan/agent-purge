@@ -206,3 +206,14 @@ test('issue #1: metadata roundtrip and referenced non-active persona update', as
   assert.equal(existsSync(join(data, 'personas', 'meta.md')), true);
   await api('harness', { harness: 'pi', persona: 'follow', mode: 'follow' });
 });
+
+test('POST /api/persona/import 端点导入本地目录', async () => {
+  const importSrc = mkdtempSync(join(sandbox, 'import-src-'));
+  writeFileSync(join(importSrc, 'gamma.md'), '---\nid: gamma\nname: Gamma\n---\nPERSONA_GAMMA');
+  const res = await api('persona/import', { source: importSrc, overwrite: true });
+  assert.equal(res.ok, true);
+  assert.equal(res.result.total, 1);
+  assert.equal(res.result.imported[0].id, 'gamma');
+  assert.ok(res.personas.some(p => p.id === 'gamma'));
+  assert.equal(existsSync(join(data, 'personas', 'gamma.md')), true);
+});

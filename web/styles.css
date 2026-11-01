@@ -885,6 +885,161 @@ summary:hover { color: var(--ink); }
 .result-row strong { font-size: 13.5px; }
 .result-row .error-text { color: var(--red); }
 
+/* ---------- Import Dialog ---------- */
+dialog.modal-dialog {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  color: var(--ink);
+  box-shadow: 0 20px 25px -5px rgba(16, 24, 40, 0.12), 0 10px 10px -5px rgba(16, 24, 40, 0.04);
+  padding: 0;
+  max-width: 480px;
+  width: calc(100vw - 32px);
+  margin: auto;
+  overflow: hidden;
+}
+dialog.modal-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+}
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line-subtle);
+  background: #ffffff;
+}
+.dialog-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.dialog-header .close-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: none;
+  transition: all 120ms ease;
+}
+.dialog-header .close-btn:hover {
+  background: var(--panel-muted);
+  color: var(--ink);
+  border: none;
+}
+.dialog-desc {
+  padding: 14px 20px 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: #ffffff;
+}
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px 0;
+  flex-wrap: wrap;
+  background: #ffffff;
+}
+.preset-row .muted {
+  font-size: 12px;
+  color: var(--muted);
+}
+.preset-pill {
+  padding: 3px 10px;
+  min-height: auto;
+  font-size: 12px;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  border: 1px solid var(--blue-border);
+  background: var(--blue-subtle);
+  color: var(--blue);
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: none;
+  transition: all 120ms ease;
+}
+.preset-pill:hover {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+}
+.dialog-body {
+  padding: 14px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #ffffff;
+}
+.dialog-body label:not(.check-label) {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.dialog-body input[type="text"] {
+  font-size: 13.5px;
+}
+.dialog-body .check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.dialog-body .check-label input {
+  margin: 0;
+}
+.import-status {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  line-height: 1.5;
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+}
+.import-status.success {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: var(--green-border);
+}
+.import-status.error {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: var(--red-border);
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line-subtle);
+  background: var(--bg);
+}
+.dialog-footer button {
+  min-height: 34px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 1100px) {

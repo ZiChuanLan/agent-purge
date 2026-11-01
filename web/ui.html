@@ -47,7 +47,19 @@
 <details class="panel launch-settings"><summary>默认命令启动 <span id="default-summary" class="muted">未设置</span></summary><div class="detail-body"><p class="help">只决定裸敲 <code>agent-purge</code> 时启动谁，不改变上面的应用范围。</p><form id="default-form" class="inline-form"><label for="default-harness">默认执行器</label><select id="default-harness"></select><button class="secondary" type="submit">保存启动设置</button></form></div></details>
 </section>
 <section id="page-library" class="page" aria-labelledby="library-title" hidden>
-<div class="page-heading"><div><h1 id="library-title">人设库</h1><p>正文用于提示词，名称与说明只用于管理。</p></div><button id="new-persona" class="primary">新建人设</button></div>
+<div class="page-heading"><div><h1 id="library-title">人设库</h1><p>正文用于提示词，名称与说明只用于管理。</p></div><div class="actions"><button id="pull-personas" class="secondary" type="button">从外部拉取</button><button id="new-persona" class="primary" type="button">新建人设</button></div></div>
+<dialog id="import-dialog" class="modal-dialog"><form id="import-form" method="dialog">
+<div class="dialog-header"><h2>从外部拉取人设</h2><button type="button" id="close-import" class="quiet close-btn" aria-label="关闭">✕</button></div>
+<p class="help dialog-desc">可从公开 GitHub 仓库或本机目录批量导入 <code>.md</code> 提示词文件，自动跳过说明文档并写入本地人设库。</p>
+<div class="preset-row"><span class="muted">快捷推荐：</span><button type="button" class="preset-pill" data-preset="ZiChuanLan/some-magic">ZiChuanLan/some-magic</button></div>
+<div class="dialog-body">
+<label for="import-source">导入源（GitHub owner/repo 或 本地目录路径）</label>
+<input id="import-source" placeholder="如 ZiChuanLan/some-magic 或 D:\prompts" required autocomplete="off">
+<label class="check-label"><input type="checkbox" id="import-overwrite" checked>覆盖同名标识（已有标识以新内容为主）</label>
+<div id="import-status" class="import-status" hidden></div>
+</div>
+<div class="dialog-footer"><button type="button" id="cancel-import" class="quiet">取消</button><button type="submit" id="start-import" class="primary">开始拉取</button></div>
+</form></dialog>
 <div class="library-layout"><aside class="panel persona-sidebar"><label class="sr-only" for="persona-search">搜索人设</label><input id="persona-search" type="search" placeholder="搜索名称或说明"><div id="persona-list"></div></aside>
 <section class="panel editor-panel"><div id="editor-empty" class="empty">选择一份人设，查看或编辑正文。</div><form id="editor-form" hidden>
 <div class="section-heading"><h2 id="editor-title">编辑人设</h2><span id="editor-status" class="muted">未修改</span></div>

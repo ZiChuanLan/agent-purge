@@ -122,6 +122,7 @@ async function handle(req, res) {
 	if (req.method === "POST" && p === "/api/omp-auto") return send(res, 200, { ompAuto: setOmpAuto(DATA, booleanField(await body(req), "on")) });
 	if (req.method === "POST" && p === "/api/dsh-profile") return send(res, 200, saveDshProfile(await body(req)));
 	if (req.method === "POST" && p === "/api/persona") return send(res, 200, savePersona(await body(req)));
+	if (req.method === "POST" && p === "/api/persona/import") return send(res, 200, await handleImportPersonas(await body(req)));
 	if (req.method === "DELETE" && p === "/api/persona") return send(res, 200, deletePersona(url.searchParams.get("id")));
 	if (req.method === "POST" && p === "/api/harness") return send(res, 200, saveHarnessConfig(await body(req)));
 	if (req.method === "POST" && p === "/api/use") return send(res, 200, usePersona(await body(req)));
@@ -405,6 +406,29 @@ function deletePersona(id) {
 
 function usePersona(payload) {
 	return { ...applyChanges({ persona: payload.id ?? "" }), active: store.activeId() };
+}
+
+async function handleImportPersonas(payload) {
+	const source = String(payload?.source || "").trim();
+	if (!source) throw httpError(400, "导入源不能为空（请提供 GitHub 仓库如 ZiChuanLan/some-magic 或本地目录）");
+	const overwrite = payload?.overwrite !== false;
+	const { importPersonas } = await import("../lib/persona-import.mjs");
+	try {
+		const result = await importPersonas(source, DATA, { overwrite });
+		let applied = null;
+		if (payload?.activateId && store.read(payload.activateId)) {
+			applied = applyConfiguration(DATA, { persona: payload.activateId });
+		}
+		return {
+			ok: true,
+			result,
+			personas: store.list().map((x) => ({ id: x.id, meta: x.meta, body: x.body, chars: x.body.trim().length })),
+			persona: store.activeId(),
+			applied,
+		};
+	} catch (e) {
+		throw httpError(400, `拉取人设失败: ${e.message}`);
+	}
 }
 
 // 按执行器覆盖人设/模式：值传 null / "" / "follow" = 恢复跟随全局。

@@ -106,6 +106,12 @@ switch (cmd) {
 	case "ls":
 		await lsCmd();
 		break;
+	case "pull":
+		await personaImportCmd(argv.slice(1));
+		break;
+	case "persona":
+		await personaImportCmd(argv.slice(1));
+		break;
 	case "doctor":
 	case "detect": {
 		const { doctor } = await import("../lib/doctor.mjs");
@@ -639,6 +645,48 @@ async function statusCmd() {
 	});
 }
 
+async function personaImportCmd(args = []) {
+	let sub = args[0];
+	let source = args[1];
+	if (sub !== "pull" && sub !== "import") {
+		source = sub;
+		sub = "pull";
+	}
+	if (!source && sub === "pull") {
+		source = "ZiChuanLan/some-magic";
+	}
+	if (!source) {
+		die("用法：agent-purge pull [owner/repo 或 本地目录] 或 agent-purge persona import <dir>");
+	}
+
+	const noOverwrite = argv.includes("--no-overwrite");
+	const { importPersonas } = await import("../lib/persona-import.mjs");
+	console.log(`正在从 ${source} 拉取人设...`);
+	try {
+		const res = await importPersonas(source, DATA, { overwrite: !noOverwrite });
+		console.log(`\n拉取完成！共导入 ${res.total} 个人设：`);
+		for (const item of res.imported) {
+			console.log(`  ✓ ${item.id.padEnd(14)} ${item.name} (${item.chars} 字, ${item.action === "created" ? "新增" : "更新"})`);
+		}
+		if (res.skipped?.length) {
+			console.log(`\n跳过 ${res.skipped.length} 个文件：`);
+			for (const item of res.skipped) {
+				console.log(`  - ${item.file || item.id}: ${item.reason}`);
+			}
+		}
+		if (res.errors?.length) {
+			console.log(`\n错误 ${res.errors.length} 项：`);
+			for (const item of res.errors) {
+				console.log(`  ✗ ${item.file}: ${item.error}`);
+			}
+		}
+		console.log(`\n查看已安装人设：agent-purge ls`);
+		console.log(`切换当前人设：agent-purge use <id>`);
+	} catch (e) {
+		die(`拉取失败：${e.message}`);
+	}
+}
+
 async function lsCmd() {
 	const { createStore } = await import("../lib/personas.mjs");
 	const store = createStore(DATA);
@@ -825,6 +873,8 @@ function help() {
 ① 选（写共享配置并同步；已加载动态插件下一轮读取，静态入口需新会话）
    agent-purge use <id>           换 persona（ls 看有哪些，* = 当前；自动刷新已武装的常驻落点）
    agent-purge use <id> --for <h> 只给某一家换 persona；--for <h> follow 恢复跟随全局
+   agent-purge pull [repo]        从 GitHub（默认 ZiChuanLan/some-magic）拉取人设
+   agent-purge persona import <dir> 从本地目录批量导入人设 (.md)
    agent-purge sync               只刷新常驻落点/命令文件，不换 persona
    agent-purge mode <m>           replace(换身份, 默认) / strict(只留人设) / append(追加) / off
    agent-purge mode <m> --for <h> 只给某一家设模式；--for <h> follow 恢复跟随全局
