@@ -8,11 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compareSemver, currentVersion, checkForUpdate, downloadFile, canReplaceSelf, replaceSelfExecutable, replaceExecutable } from '../lib/update.mjs';
 
+const pkgVersion = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+
 test('compareSemver includes prerelease ordering and ignores build metadata', () => {
   for (const [a,b,result] of [['0.2.11','0.2.11',0], ['0.2.11','0.2.12',1], ['0.2.11','0.3.0',1], ['0.2.11','1.0.0',1], ['0.2.11','0.2.10',-1], ['v0.2.11','0.2.11',0], ['1.0.0-beta.9','1.0.0-beta.10',1], ['1.0.0-beta','1.0.0',1], ['1.0.0','1.0.0-rc.1',-1], ['1.0.0+one','1.0.0+two',0]]) assert.equal(Math.sign(compareSemver(a,b)),result,`${a} -> ${b}`);
 });
 test('currentVersion reads the packaged version and Node is never self-replaceable', () => {
-  assert.equal(currentVersion(), '0.2.11');
+  assert.equal(currentVersion(), pkgVersion);
   assert.equal(canReplaceSelf(), false);
   assert.throws(() => replaceSelfExecutable('not-a-file'), /Node\/脚本安装/);
 });
@@ -37,10 +39,10 @@ test('release cache recomputes current version and validates release metadata', 
   const dir=mkdtempSync(join(tmpdir(),'ap-update-cache-')), file=join(dir,'cache.json');
   try {
     let calls=0;
-    t.mock.method(globalThis,'fetch',async()=>{calls++;return {ok:true,status:200,json:async()=>({tag_name:'v0.2.12',assets:[{name:'agent-purge.exe',size:100,browser_download_url:'https://example.invalid/app',digest:'sha256:abc'},{name:'wrong',browser_download_url:'file:///tmp/x'}]})};});
+    t.mock.method(globalThis,'fetch',async()=>{calls++;return {ok:true,status:200,json:async()=>({tag_name:'v9.9.9',assets:[{name:'agent-purge.exe',size:100,browser_download_url:'https://example.invalid/app',digest:'sha256:abc'},{name:'wrong',browser_download_url:'file:///tmp/x'}]})};});
     const info=await checkForUpdate({cacheFile:file}); assert.equal(info.hasUpdate,true); assert.equal(info.assets.length,1);
     const cached=JSON.parse(readFileSync(file,'utf8'));cached.current='0.0.0';writeFileSync(file,JSON.stringify(cached));
-    assert.equal((await checkForUpdate({cacheFile:file})).current,'0.2.11');assert.equal(calls,1);
+    assert.equal((await checkForUpdate({cacheFile:file})).current,pkgVersion);assert.equal(calls,1);
     globalThis.fetch=async()=>({ok:true,status:200,json:async()=>({tag_name:'bad'})});
     assert.equal((await checkForUpdate({force:true})).ok,false);
   } finally { rmSync(dir,{recursive:true,force:true}); }
