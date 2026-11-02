@@ -27,6 +27,7 @@
 - DSH 三形态已于 2026-11-02 补测（`0.2.1-rc.5`，本地 loopback provider）：headless 用 CLI，web 用 `dsh web`，desktop 用 `DeepSeek Harness.exe`；三形态各 `off / strict / replace / append` 四模式，共 12 次主请求均在 system 层捕获，marker 命中 1（off 为 0），user 层 0。见 `out/capture/dsh-surfaces-2026-11-01T18-05-22-727Z/report.json`。desktop 的 strict 仍含宿主注入的约 11.4K `billion-context` 系统提醒，因此 strict 不是纯人设。
 - Hermes、zcode、antigravity 未找到入口，不计成功。
 - WorkBuddy 5.9.3 于 2026-11-02 用本机桌面会话验证 `settings.json → personalization.customPrompt`：写入测试人设后模型回答切换成功；这是身份上下文追加，不是完整 system 替换，云端请求体不可见，因此不列入上表。
+- WorkBuddy 设置里的“名字”“人设设定”是它自己的云端个人配置，不是 `customPrompt`；关闭 agent-purge 不会清掉这两项，也不应越权改写。
 - Kilo Code `@kilocode/cli` 已接入 `~/.config/kilo/agent/code.md`（replace/strict）与 `AGENTS.md`（append）配置通道；源码确认 `agent.prompt` 会替换 provider prompt，但 `soul()` 仍前置 `You are Kilo`；尚未做真实 provider 抓包。
 - `opencode`（`opencode-ai` 1.x）与 `opencode2`（`@opencode/cli` 2.x）是不同接口，不能混用插件。
 - 不支持注入的闭源桌面入口不会标为注入成功；有些只能原样启动，有些会明确拒绝。

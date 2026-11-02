@@ -328,7 +328,7 @@
 			"purgedSystemChars": null,
 			"measuredVersion": "5.9.3",
 			"verify": "本机真实桌面会话验证：settings.json customPrompt 写入测试人设后，新任务回答“我是 AP_CUSTOM”；云端请求体不可见",
-			"note": "腾讯企业级桌面端；原生身份槽位 settings.json 的 personalization.customPrompt，无需解包 app.asar",
+			"note": "腾讯企业级桌面端；原生身份槽位 settings.json 的 personalization.customPrompt，无需解包 app.asar；名字/人设设定是 WorkBuddy 云端个人配置，agent-purge 不写入",
 			"preferredMode": "replace"
 		},
 		"kilo": {
