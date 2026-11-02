@@ -31,8 +31,8 @@ const DATA = dataHome();
 const LAYER = {
 	pi: "sys", codex: "sys", codebuddy: "sys", claude: "sys", grok: "sys",
 	omp: "sys", opencode: "sys", hermes: "sys", antigravity: "sys", workbuddy: "sys",
-	// zcode 只有文档说它会读 AGENTS.md，桌面版闭源、无法复核，层就不claim（UI 显示“—”+「文档」）
-	zcode: "",
+	// zcode 的内核 bundle 已核对：读取 ~/.zcode/AGENTS.md，且支持 customSystemPrompt
+	zcode: "sys",
 };
 const matrix = (() => {
 	try {
