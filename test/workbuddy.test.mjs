@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_TEMPLATES, installWorkbuddy, patchTemplateContent, uninstallWorkbuddy } from "../lib/workbuddy.mjs";
+import { status } from "../lib/persist.mjs";
 
 test("workbuddy: patchTemplateContent in strict/replace/append modes", () => {
 	const original = `This conversation is powered by {{ modelName }}\n\nYour main goal is to follow the USER's instructions...\nYou are WorkBuddy.\n{{ WorkbuddyMemory_1 }}\n{{ UserInstructionsContent }}\n`;
@@ -39,6 +40,8 @@ test("workbuddy: install and uninstall lifecycle with stash restoration", () => 
 	mkdirSync(tplDir, { recursive: true });
 
 	const sampleOriginal = `This conversation is powered by {{ modelName }}\n{{ WorkbuddyMemory_1 }}\n{{ UserInstructionsContent }}\n`;
+	const previousTemplates = process.env.WORKBUDDY_TEMPLATES_DIR;
+	process.env.WORKBUDDY_TEMPLATES_DIR = tplDir;
 	writeFileSync(join(tplDir, "workbuddy-prompt.tpl"), sampleOriginal, "utf8");
 
 	// 1. 安装 replace
@@ -52,6 +55,7 @@ test("workbuddy: install and uninstall lifecycle with stash restoration", () => 
 
 	const installedContent = readFileSync(join(tplDir, "workbuddy-prompt.tpl"), "utf8");
 	assert.match(installedContent, /Test Persona 1/);
+	assert.equal(status(apHome).find((x) => x.name === "workbuddy")?.installed, true);
 
 	// 2. 卸载 uninstall
 	const uninstallRes = uninstallWorkbuddy(apHome, { templatesDir: tplDir });
@@ -60,6 +64,9 @@ test("workbuddy: install and uninstall lifecycle with stash restoration", () => 
 
 	const restoredContent = readFileSync(join(tplDir, "workbuddy-prompt.tpl"), "utf8");
 	assert.equal(restoredContent, sampleOriginal, "原字节完全无损还原");
+	assert.equal(status(apHome).find((x) => x.name === "workbuddy")?.installed, false);
 
+	if (previousTemplates === undefined) delete process.env.WORKBUDDY_TEMPLATES_DIR;
+	else process.env.WORKBUDDY_TEMPLATES_DIR = previousTemplates;
 	rmSync(dir, { recursive: true, force: true });
 });
