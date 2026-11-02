@@ -11,7 +11,7 @@ for(const key of ['HOME','USERPROFILE','AGENT_PURGE_HOME','XDG_CONFIG_HOME','DSH
 for(const key of ['AGENT_PURGE_FORCE','AGENT_PURGE_MODE','AGENT_PURGE_PERSONA']) delete process.env[key];
 mkdirSync(root,{recursive:true});
 const {createStore}=await import('../lib/personas.mjs');const {loadState,patchState}=await import('../lib/state.mjs');
-const {applyConfiguration,changeChannel}=await import('../lib/apply.mjs');const {targets}=await import('../lib/persist.mjs');
+const {applyConfiguration,changeChannel,disableHarness}=await import('../lib/apply.mjs');const {targets}=await import('../lib/persist.mjs');
 const {reconcileArmed}=await import('../lib/armed.mjs');const store=createStore(root);
 store.save('a',{body:'PERSONA A'});store.save('b',{body:'PERSONA B'});store.setActive('a');
 const text=file=>readFileSync(file,'utf8');
@@ -45,6 +45,17 @@ test('CLI use shares application path and rewrites installed static body',()=>{
 test('exclusive apply lock rejects overlapping writer without altering state',()=>{
  const previous=text(join(root,'state.json'));writeFileSync(join(root,'.apply.lock'),JSON.stringify({pid:process.pid}));
  try{assert.throws(()=>applyConfiguration(root,{persona:'a'}),/另一个配置操作/);assert.equal(text(join(root,'state.json')),previous);}finally{rmSync(join(root,'.apply.lock'));}
+});
+test('disableHarness cleans an installed block even when armed state was lost', () => {
+ const file=targets.pi.file(); mkdirSync(join(file,'..'),{recursive:true}); writeFileSync(file,'USER RULES\n');
+ assert.equal(changeChannel(root,{harness:'pi',channel:'install',enabled:true}).ok,true);
+ assert.match(text(file),/PERSONA B/);
+ patchState(root,{armed:{}});
+ const r=disableHarness(root,'pi');
+ assert.equal(r.ok,true);
+ assert.doesNotMatch(text(file),/PERSONA B/);
+ assert.match(text(file),/USER RULES/);
+ assert.ok(loadState(root).state.disabledHarnesses.includes('pi'));
 });
 test('历史能力证据不确认本次应用',()=>{
  store.save('a',{body:'PERSONA A'});store.setActive('a');patchState(root,{default:{harness:'pi',mode:'replace'},armed:{pi:['install']}});
