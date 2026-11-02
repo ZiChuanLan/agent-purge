@@ -82,6 +82,28 @@ test('dsh same callback: A→B→off, sync result preserved; slash mode scoped t
  asm=ctx.systemPrompt.assemble();state('append','b');asm=ctx.systemPrompt.assemble();assert.doesNotMatch(JSON.stringify(asm),/VERSION A/);
  state('strict','b');asm=ctx.systemPrompt.assemble();state('off','b');asm=ctx.systemPrompt.assemble();assert.deepEqual(asm,original);
 });
+test('dsh slash mode: defaults to purge off until explicitly turned on via /purge on',async()=>{
+ const {install}=await import('../lib/persist.mjs');
+ // 同时武装 install 和 slash，未执行 /purge on（dshRuntime 为空或 enabled 为 false）
+ state('append','a',{armed:{dsh:['install','slash']},dshRuntime:{headless:{enabled:false}}});
+ install('dsh',{root,active:join(root,'personas','active.md')});
+ const file=join(root,'profiles','headless','node_modules','agent-purge','index.js');
+ const plugin=(await import(pathToFileURL(file).href+'?slash-default-off')).default;
+ const original={sections:[{name:'host',text:'HOST'}]};
+ const ctx={systemPrompt:{assemble:()=>structuredClone(original)}};
+ plugin.apply(ctx);
+ // 默认处于 purge off 状态：不修改系统提示词
+ let asm=ctx.systemPrompt.assemble();
+ assert.deepEqual(asm,original);
+ // 模拟用户在会话内执行 /purge on
+ state('append','a',{armed:{dsh:['install','slash']},dshRuntime:{headless:{enabled:true}}});
+ asm=ctx.systemPrompt.assemble();
+ assert.match(JSON.stringify(asm),/VERSION A/);
+ // 模拟用户执行 /purge off
+ state('append','a',{armed:{dsh:['install','slash']},dshRuntime:{headless:{enabled:false}}});
+ asm=ctx.systemPrompt.assemble();
+ assert.deepEqual(asm,original);
+});
 test('overrides: runtime reads the per-harness persona/mode, global stays as fallback',async()=>{
  // pi / omp：全局 append + a，pi 单独指向 b → 注入的是 b；显式 FORCE 不需要，slash 已武装
  state('append','a',{overrides:{pi:{persona:'b'}}});

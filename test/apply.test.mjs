@@ -58,3 +58,24 @@ test('历史能力证据不确认本次应用',()=>{
  rmSync(verification,{recursive:true,force:true});
  assert.equal(applyConfiguration(root,{persona:'a'}).runtimeConfirmed,false);
 });
+test('dsh: enabling slash cascades to install and initializes purge off; removing install cascades slash off', () => {
+ const dshHome = process.env.DSH_HOME;
+ const headless = join(dshHome, 'profiles', 'headless');
+ mkdirSync(headless, { recursive: true });
+ writeFileSync(join(headless, 'package.json'), '{}');
+ patchState(root, { default: { harness: 'dsh', mode: 'replace' }, armed: {} });
+ // 单独开启 slash 通道
+ const r = changeChannel(root, { harness: 'dsh', channel: 'slash', enabled: true });
+ assert.equal(r.ok, true);
+ const armed = loadState(root).state.armed?.dsh ?? [];
+ assert.ok(armed.includes('install'), 'slash 必须级联安装 install 常驻插件');
+ assert.ok(armed.includes('slash'), 'slash 必须被武装');
+ const runtime = loadState(root).state.dshRuntime ?? {};
+ assert.equal(runtime.headless?.enabled, false, '开启热切时默认必须处于 purge off 状态');
+ // 卸载 install 时，slash 必须一并级联卸载
+ const un = changeChannel(root, { harness: 'dsh', channel: 'install', enabled: false });
+ assert.equal(un.ok, true);
+ const armedAfter = loadState(root).state.armed?.dsh ?? [];
+ assert.equal(armedAfter.includes('install'), false);
+ assert.equal(armedAfter.includes('slash'), false);
+});
