@@ -1,61 +1,41 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findTemplatesDir, installWorkbuddy, uninstallWorkbuddy } from '../lib/workbuddy.mjs';
+import { installWorkbuddyPrompt, uninstallWorkbuddyPrompt, workbuddySettingsFile } from '../lib/workbuddy.mjs';
 
-function sha(buf) {
-  return createHash('sha256').update(buf).digest('hex');
+console.log('=== WorkBuddy 身份上下文注入验证（隔离 settings 副本） ===');
+const originalHome = process.env.WORKBUDDY_CONFIG_DIR;
+const originalData = process.env.AGENT_PURGE_HOME;
+const dir = mkdtempSync(join(tmpdir(), 'ap-workbuddy-settings-'));
+const data = mkdtempSync(join(tmpdir(), 'ap-workbuddy-data-'));
+process.env.WORKBUDDY_CONFIG_DIR = dir;
+process.env.AGENT_PURGE_HOME = data;
+const file = workbuddySettingsFile();
+writeFileSync(file, JSON.stringify({ personalization: { customPrompt: 'keep me' } }, null, 2) + '\n');
+
+try {
+	const marker = `AP_WORKBUDDY_SETTINGS_VERIFIED_${Date.now()}`;
+	const installed = installWorkbuddyPrompt(data, {
+		personaText: `You are a test persona. Marker: ${marker}.`,
+		mode: 'replace',
+	});
+	console.log(`[1] install: ${installed.status} (${installed.chars} chars)`);
+	const prompt = JSON.parse(readFileSync(file, 'utf8')).personalization?.customPrompt ?? '';
+	if (!prompt.includes(marker) || !prompt.includes('# >>> agent-purge:workbuddy')) {
+		throw new Error('断言失败：settings.json customPrompt 未包含托管块或 marker');
+	}
+	console.log('✓ settings.json customPrompt 已写入身份上下文');
+
+	const restored = uninstallWorkbuddyPrompt(data);
+	const after = JSON.parse(readFileSync(file, 'utf8')).personalization?.customPrompt ?? null;
+	if (after !== 'keep me') throw new Error(`致命错误：customPrompt 未恢复为原值（${after}）`);
+	console.log(`[2] uninstall: ${restored.status}; customPrompt 原值已恢复`);
+} finally {
+	if (originalHome === undefined) delete process.env.WORKBUDDY_CONFIG_DIR;
+	else process.env.WORKBUDDY_CONFIG_DIR = originalHome;
+	if (originalData === undefined) delete process.env.AGENT_PURGE_HOME;
+	else process.env.AGENT_PURGE_HOME = originalData;
+	rmSync(dir, { recursive: true, force: true });
+	rmSync(data, { recursive: true, force: true });
 }
-
-console.log('=== WorkBuddy 真实环境探测与注入验证 ===');
-const tplDir = findTemplatesDir();
-console.log(`Detected Templates Directory: ${tplDir}`);
-
-if (!tplDir) {
-  console.error('未在系统中找到 WorkBuddy 安装目录！');
-  process.exit(1);
-}
-
-const mainTpl = join(tplDir, 'workbuddy-prompt.tpl');
-const originalContent = readFileSync(mainTpl, 'utf8');
-const originalSha = sha(originalContent);
-console.log(`Original workbuddy-prompt.tpl SHA256: ${originalSha}`);
-
-const TEST_MARKER = 'AP_WORKBUDDY_SYS_INJECTION_VERIFIED_' + Date.now();
-const testPersona = `You are a Pure Autonomous Agent. Marker: ${TEST_MARKER}.`;
-
-console.log('\n[1] 执行 strict 模式安装...');
-const instRes = installWorkbuddy(undefined, {
-  personaText: testPersona,
-  mode: 'strict',
-  templatesDir: tplDir,
-});
-console.log(`Installed: touched ${instRes.touched.length} templates.`);
-
-// 读取修改后的模板
-const modifiedContent = readFileSync(mainTpl, 'utf8');
-const modifiedSha = sha(modifiedContent);
-console.log(`Modified SHA256: ${modifiedSha}`);
-
-// 断言
-if (!modifiedContent.includes(TEST_MARKER)) {
-  throw new Error('断言失败：修改后的模板未包含 Marker！');
-}
-if (modifiedContent.includes('You are WorkBuddy')) {
-  throw new Error('断言失败：strict 模式未清空 WorkBuddy 宿主身份！');
-}
-console.log('✓ strict 模式断言成功：宿主身份已清空，Marker 已成功植入系统模板！');
-
-console.log('\n[2] 执行卸载还原...');
-const uninstRes = uninstallWorkbuddy(undefined, { templatesDir: tplDir });
-console.log(`Uninstalled: restored ${uninstRes.restored.length} templates.`);
-
-const restoredContent = readFileSync(mainTpl, 'utf8');
-const restoredSha = sha(restoredContent);
-console.log(`Restored SHA256: ${restoredSha}`);
-
-if (restoredSha !== originalSha) {
-  throw new Error(`致命错误：还原后的 SHA256 (${restoredSha}) 与原始 (${originalSha}) 不一致！`);
-}
-console.log('✓ 卸载还原验证成功：原字节 100% 逐位一致！');
-console.log('\n=== WorkBuddy 模板级接管实测全部通过！ ===');
+console.log('\n=== WorkBuddy settings 身份上下文接管实测通过；模型回复需在桌面端新任务确认 ===');

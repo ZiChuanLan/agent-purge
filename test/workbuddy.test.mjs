@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CORE_TEMPLATES, installWorkbuddy, patchTemplateContent, uninstallWorkbuddy } from "../lib/workbuddy.mjs";
-import { status } from "../lib/persist.mjs";
+import { CORE_TEMPLATES, installWorkbuddy, installWorkbuddyPrompt, patchTemplateContent, uninstallWorkbuddy, uninstallWorkbuddyPrompt, workbuddySettingsFile } from "../lib/workbuddy.mjs";
 
 test("workbuddy: patchTemplateContent in strict/replace/append modes", () => {
 	const original = `This conversation is powered by {{ modelName }}\n\nYour main goal is to follow the USER's instructions...\nYou are WorkBuddy.\n{{ WorkbuddyMemory_1 }}\n{{ UserInstructionsContent }}\n`;
@@ -55,8 +54,6 @@ test("workbuddy: install and uninstall lifecycle with stash restoration", () => 
 
 	const installedContent = readFileSync(join(tplDir, "workbuddy-prompt.tpl"), "utf8");
 	assert.match(installedContent, /Test Persona 1/);
-	assert.equal(status(apHome).find((x) => x.name === "workbuddy")?.installed, true);
-
 	// 2. 卸载 uninstall
 	const uninstallRes = uninstallWorkbuddy(apHome, { templatesDir: tplDir });
 	assert.equal(uninstallRes.status, "uninstalled");
@@ -64,9 +61,34 @@ test("workbuddy: install and uninstall lifecycle with stash restoration", () => 
 
 	const restoredContent = readFileSync(join(tplDir, "workbuddy-prompt.tpl"), "utf8");
 	assert.equal(restoredContent, sampleOriginal, "原字节完全无损还原");
-	assert.equal(status(apHome).find((x) => x.name === "workbuddy")?.installed, false);
-
 	if (previousTemplates === undefined) delete process.env.WORKBUDDY_TEMPLATES_DIR;
 	else process.env.WORKBUDDY_TEMPLATES_DIR = previousTemplates;
 	rmSync(dir, { recursive: true, force: true });
+});
+
+
+test("workbuddy: settings customPrompt install and uninstall preserve other settings", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-wb-settings-"));
+	const previous = process.env.WORKBUDDY_CONFIG_DIR;
+	process.env.WORKBUDDY_CONFIG_DIR = dir;
+	const file = workbuddySettingsFile();
+	writeFileSync(file, JSON.stringify({ locale: "zh-CN", personalization: { customPrompt: "keep me", toneStyle: "friendly" } }, null, 2) + "\n");
+	try {
+		const installed = installWorkbuddyPrompt(dir, { personaText: "PERSONA_MARKER", mode: "replace" });
+		assert.equal(installed.status, "installed");
+		const settings = JSON.parse(readFileSync(file, "utf8"));
+		assert.match(settings.personalization.customPrompt, /# >>> agent-purge:workbuddy/);
+		assert.match(settings.personalization.customPrompt, /PERSONA_MARKER/);
+		assert.equal(settings.personalization.toneStyle, "friendly");
+		assert.equal(settings.locale, "zh-CN");
+		const restored = uninstallWorkbuddyPrompt(dir);
+		assert.equal(restored.status, "restored");
+		const after = JSON.parse(readFileSync(file, "utf8"));
+		assert.equal(after.personalization.customPrompt, "keep me");
+		assert.equal(after.personalization.toneStyle, "friendly");
+	} finally {
+		if (previous === undefined) delete process.env.WORKBUDDY_CONFIG_DIR;
+		else process.env.WORKBUDDY_CONFIG_DIR = previous;
+		rmSync(dir, { recursive: true, force: true });
+	}
 });

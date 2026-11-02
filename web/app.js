@@ -26,7 +26,7 @@ const HOT_SVG = {
 const hotBadge = (label, kind = '', icon = 'hot') =>
   node('span', { class: `badge ${kind}` }, HOT_SVG[icon].cloneNode(true), label);
 const empty = label => node('p', { class: 'empty' }, label);
-const HARNESS_ICON_FILES = { pi: 'pi.png', claude: 'claude.ico', codex: 'codex.webp', omp: 'omp.png', dsh: 'dsh.ico', grok: 'grok.ico', hermes: 'hermes.ico', opencode: 'opencode.ico', opencode2: 'opencode2.ico', codebuddy: 'codebuddy.png', zcode: 'zcode.png' };
+const HARNESS_ICON_FILES = { pi: 'pi.png', claude: 'claude.ico', codex: 'codex.webp', omp: 'omp.png', dsh: 'dsh.ico', grok: 'grok.ico', hermes: 'hermes.ico', opencode: 'opencode.ico', opencode2: 'opencode2.ico', codebuddy: 'codebuddy.png', zcode: 'zcode.png', workbuddy: 'workbuddy.png', kilo: 'kilo.png' };
 const harnessIcon = (id, size = 24) => {
   // 真实图标在 web/assets/ 下（各官网/favicon 下载），不是手绘 SVG。
   const file = HARNESS_ICON_FILES[id];

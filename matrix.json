@@ -318,18 +318,33 @@
 			}
 		},
 		"workbuddy": {
-			"class": "template-patch",
+			"class": "config",
 			"override": true,
 			"inject": true,
 			"hotSwitch": false,
-			"patch": true,
-			"launcher": "WorkBuddy（app.asar.unpacked/resources/templates/*.tpl 模板接管，stash 原字节可逆还原）",
-			"defaultSystemChars": 30965,
-			"purgedSystemChars": 120,
+			"patch": false,
+			"launcher": "WorkBuddy（settings.json → personalization.customPrompt，身份上下文；可逆）",
+			"defaultSystemChars": null,
+			"purgedSystemChars": null,
 			"measuredVersion": "5.9.3",
-			"verify": "真实模板注入与 SHA256 无损撤回验证通过；strict 模式彻底抹除宿主身份",
-			"note": "腾讯企业级桌面端；Prompt 模板裸露在 app.asar.unpacked 下，零解包无损接管",
-			"preferredMode": "strict"
+			"verify": "本机真实桌面会话验证：settings.json customPrompt 写入测试人设后，新任务回答“我是 AP_CUSTOM”；云端请求体不可见",
+			"note": "腾讯企业级桌面端；原生身份槽位 settings.json 的 personalization.customPrompt，无需解包 app.asar",
+			"preferredMode": "replace"
+		},
+		"kilo": {
+			"class": "config",
+			"override": true,
+			"inject": true,
+			"hotSwitch": false,
+			"patch": false,
+			"launcher": "Kilo Code（~/.config/kilo/agent/code.md 覆盖 code agent prompt；AGENTS.md 追加）",
+			"defaultSystemChars": null,
+			"purgedSystemChars": null,
+			"measuredVersion": null,
+			"verify": "源码级确认 input.agent.prompt 覆盖 provider prompt；未做真实 provider 抓包",
+			"residue": "宿主 soul() 仍会前置 “You are Kilo” 身份",
+			"note": "Kilo Code CLI/VS Code；原生 agent Markdown 配置，无需改二进制",
+			"preferredMode": "replace"
 		}
 	},
 	"armorTarget": "https://api.deepseek.com/v1 · deepseek-flash",

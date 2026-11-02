@@ -30,7 +30,7 @@ const DATA = dataHome();
 // sys = 系统提示/配置文件/插件 splice；user = 只落在用户消息里（zcode 的 hook）。
 const LAYER = {
 	pi: "sys", codex: "sys", codebuddy: "sys", claude: "sys", grok: "sys",
-	omp: "sys", opencode: "sys", hermes: "sys", antigravity: "sys", workbuddy: "sys",
+	omp: "sys", opencode: "sys", hermes: "sys", antigravity: "sys", workbuddy: "sys", kilo: "sys", kilo: "sys",
 	// zcode 的内核 bundle 已核对：读取 ~/.zcode/AGENTS.md，且支持 customSystemPrompt
 	zcode: "sys",
 };
