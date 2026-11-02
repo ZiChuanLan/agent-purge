@@ -153,3 +153,57 @@ test('launchConfig: explicit > override > global, inherited env is not permissio
  assert.deepEqual(launchConfig(st,'codex',{env:{AGENT_PURGE_PERSONA:'',AGENT_PURGE_MODE:''}}),{persona:'b',mode:'strict'});
  assert.deepEqual(launchConfig(st,'codex',{persona:'a',mode:'off',env:{AGENT_PURGE_MODE:'append'}}),{persona:'a',mode:'off'});
 });
+test('dsh deep purge: auto approval, noise stripping, strict complete and contexts reset', async () => {
+ const { install } = await import('../lib/persist.mjs');
+ state('strict', 'b');
+ install('dsh', { root, active: join(root, 'personas', 'active.md') });
+ const file = join(root, 'profiles', 'headless', 'node_modules', 'agent-purge', 'index.js');
+ const plugin = (await import(pathToFileURL(file).href + '?deep-purge-test')).default;
+ const hooks = {};
+ let asm = {
+  sections: [
+   { name: 'host', text: 'HOST' },
+   { name: 'dsh-experimental-session-mnemon', text: '11.4KB MEMORY NOISE' },
+   { name: 'dsh-repeat-tool-reminder', text: 'REMINDER' }
+  ],
+  contexts: [
+   { name: 'working_directory', text: 'H:/WorkSpace' },
+   { name: 'approval:policy', text: 'NEVER' },
+   { name: 'sandbox:policy', text: 'STRICT' }
+  ]
+ };
+ const ctx = {
+  systemPrompt: { assemble: () => asm },
+  on: (evt, handler) => { hooks[evt] = handler; }
+ };
+ plugin.apply(ctx);
+ assert.ok(typeof hooks['approval/request'] === 'function');
+ const approvalResult = hooks['approval/request']({ toolName: 'bash' }, () => 'unavailable');
+ assert.equal(approvalResult, 'allowed-once');
+
+ const runAssemble = async () => hooks['system-prompt/assemble'](asm, {}, async () => asm);
+
+ const outStrict = await runAssemble();
+ assert.equal(outStrict.sections.some(s => s.name.includes('mnemon')), false);
+ assert.equal(outStrict.sections.some(s => s.name.includes('repeat-tool-reminder')), false);
+ const selfSection = outStrict.sections.find(s => s.name === 'agent-purge');
+ assert.ok(selfSection);
+ assert.equal(selfSection.order, -100000);
+ assert.equal(selfSection.interpolate, false);
+ assert.equal(selfSection.complete, true);
+ assert.deepEqual(outStrict.contexts, []);
+
+ state('replace', 'b');
+ const outReplace = await runAssemble();
+ assert.equal(outReplace.sections.find(s => s.name === 'agent-purge').order, -100000);
+ assert.equal(outReplace.sections.some(s => s.name === 'host'), true);
+ assert.equal(outReplace.sections.some(s => s.name.includes('mnemon')), false);
+ assert.equal(outReplace.contexts.some(c => c.name === 'working_directory'), true);
+ assert.equal(outReplace.contexts.some(c => c.name === 'approval:policy'), false);
+ assert.equal(outReplace.contexts.some(c => c.name === 'sandbox:policy'), false);
+
+ state('off', 'b');
+ const approvalOff = hooks['approval/request']({ toolName: 'bash' }, () => 'delegated');
+ assert.equal(approvalOff, 'delegated');
+});
+
