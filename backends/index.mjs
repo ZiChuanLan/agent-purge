@@ -7,6 +7,7 @@ import { opencodePlugins, targets } from "../lib/persist.mjs";
 import { opencodeSource } from "../lib/opencode.mjs";
 import { dataHome } from "../lib/home.mjs";
 import { swapFile } from "../lib/restore.mjs";
+import { installKilocode, uninstallKilocode } from "../lib/kilocode.mjs";
 
 function temporaryPlugin(harness, file, root, args) {
  let undo = null;
@@ -93,6 +94,19 @@ export const backends = {
 	opencode2: ({ mode, args, root = dataHome() }) => {
 		if (mode === "off") return { cmd: "opencode2", args: [...args], privateServer: true };
 		return { ...temporaryPlugin("opencode2", join(opencodePlugins(), "agent-purge-v2-session.ts"), root, args), privateServer: true };
+	},
+
+	// Kilo Code：code.md 覆盖默认 code agent 的 prompt；AGENTS.md 是 append 通道。
+	// 一次性运行用临时安装，退出时按 stash 还原；交互式启动可先 agent-purge install kilo。
+	kilo: ({ personaText, mode, args, root = dataHome() }) => {
+		if (mode === "off") return { cmd: "kilo", args: ["run", ...args] };
+		let installed = false;
+		return {
+			cmd: "kilo",
+			args: ["run", ...args],
+			setup: () => { if (!installed) { installKilocode(root, { personaText, mode }); installed = true; } },
+			cleanup: () => { if (installed) { uninstallKilocode(root); installed = false; } },
+		};
 	},
 
 	// 需要落盘或调用方配合，CLI 不代劳，只给可复制的配方
@@ -186,6 +200,17 @@ export const oneshots = {
 		args: ["--prompt", prompt, "--mode", "yolo", "--output-format", "stream-json", "--no-color"],
 		note: "persona 对 zcode CLI 不生效：customSystemPrompt 只有 app-server/SDK 能传",
 	}),
+	kilo: ({ prompt, personaText, mode, root }) => {
+		if (mode === "off") return { cmd: "kilo", args: ["run", prompt, "--format", "json"] };
+		let installed = false;
+		return {
+			cmd: "kilo",
+			args: ["run", prompt, "--format", "json"],
+			setup: () => { if (!installed) { installKilocode(root, { personaText, mode }); installed = true; } },
+			cleanup: () => { if (installed) { uninstallKilocode(root); installed = false; } },
+		};
+	},
+
 	codebuddy: ({ prompt, personaPath, personaText, mode }) => ({
 		cmd: "codebuddy",
 		args: [

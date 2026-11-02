@@ -151,7 +151,7 @@ agent-purge status
 | DSH | 0.2.1-rc.5 | 已验证（SDK 同会话；headless/web/desktop 三形态四模式已抓） |
 | Codex / Claude Code | 0.166.0 / 2.1.316 | 启动入口已验证；热切未验证 |
 | CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口已验证；热切未验证 |
-| Kilo Code | @kilocode/cli 7.8.25（源码级） | 配置入口；未做真实 provider 抓包 |
+| Kilo Code | @kilocode/cli 7.8.18 | off/strict/replace/append 四模式真实抓包；system 层 marker=1 |
 | WorkBuddy | 5.9.3 | 身份上下文已验证；热切未验证 |
 
 首次安装或更新插件代码后，仍需重新加载宿主。**配置写入、历史测试通过、当前会话实际生效，是不同状态。**

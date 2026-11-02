@@ -28,7 +28,7 @@
 - Hermes、zcode、antigravity 未找到入口，不计成功。
 - WorkBuddy 5.9.3 于 2026-11-02 用本机桌面会话验证 `settings.json → personalization.customPrompt`：写入测试人设后模型回答切换成功；这是身份上下文追加，不是完整 system 替换，云端请求体不可见，因此不列入上表。
 - WorkBuddy 设置里的“名字”“人设设定”是它自己的云端个人配置，不是 `customPrompt`；关闭 agent-purge 不会清掉这两项，也不应越权改写。
-- Kilo Code `@kilocode/cli` 已接入 `~/.config/kilo/agent/code.md`（replace/strict）与 `AGENTS.md`（append）配置通道；源码确认 `agent.prompt` 会替换 provider prompt，但 `soul()` 仍前置 `You are Kilo`；尚未做真实 provider 抓包。
+- Kilo Code `@kilocode/cli` 7.8.18：`~/.config/kilo/agent/code.md`（replace/strict）与 `AGENTS.md`（append）通道；2026-11-02 隔离 HOME 真实二进制抓包 `off/strict/replace/append` 四模式均捕获主请求，marker 全落 system 层（system 13717→5442/5353/13975 字）；源码确认 `soul()` 仍前置 `You are Kilo`。
 - `opencode`（`opencode-ai` 1.x）与 `opencode2`（`@opencode/cli` 2.x）是不同接口，不能混用插件。
 - 不支持注入的闭源桌面入口不会标为注入成功；有些只能原样启动，有些会明确拒绝。
 

@@ -12,7 +12,7 @@ async function main(){
  try{
  const argv=process.argv.slice(2),hot=argv.includes('--hot');
  const unknown=argv.filter(a=>a.startsWith('--')&&!['--hot','--no-publish','--keep-roots'].includes(a));if(unknown.length)throw new Error('Unknown capture flags: '+unknown.join(', '));
- const wanted=argv.filter(a=>!a.startsWith('--'));const hs=wanted.length?wanted:['pi','omp','codex','claude','codebuddy','grok','hermes','opencode','opencode2','dsh','zcode','antigravity'];
+ const wanted=argv.filter(a=>!a.startsWith('--'));const hs=wanted.length?wanted:['pi','omp','codex','claude','codebuddy','grok','hermes','kilo','opencode','opencode2','dsh','zcode','antigravity'];
  const out=join(REPO,'out','capture',new Date().toISOString().replace(/[:.]/g,'-'));mkdirSync(out,{recursive:true});
  const report={schema:1,at:new Date().toISOString(),kind:'loopback-real-binary',out,limitations:['No behavioral model quality claim','Provider request roles reported separately; no production credentials inherited','HTTP proxies are not an OS network sandbox'],harnesses:[]};
  for(const h of hs){
