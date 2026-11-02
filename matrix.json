@@ -246,15 +246,15 @@
 		},
 		"zcode": {
 			"class": "config-or-hook",
-			"override": "app-server only",
+			"override": "install or app-server",
 			"inject": true,
 			"hotSwitch": false,
 			"patch": true,
-			"launcher": "CLI 只有 UserPromptSubmit hook 注入（user 角色）；customSystemPrompt 需 app-server 调用方；归零要补丁 IJs",
+			"launcher": "桌面端内嵌 zcode.cjs（读 ~/.zcode/AGENTS.md 与 ~/.zcode/cli/config.json Hook；ContextBuilder 支持 customSystemPrompt）",
 			"defaultSystemChars": 9359,
 			"purgedSystemChars": 9359,
-			"measuredVersion": "0.16.9（闭源桌面 3.14.5）",
-			"verify": "capture.mjs 或 ~/.zcode/cli/rollout/model-io-*.jsonl",
+			"measuredVersion": "3.16.3（内核 bundle 同构开源 zcode-cli 0.16.x）",
+			"verify": "内核 gks 静态断言 ~/.zcode/AGENTS.md 加载，ContextBuilder customSystemPrompt 与 UserPromptSubmit Hook 存在",
 			"residue": "cli_prefix 42 字总是存在",
 			"armor": {
 				"probe": {
@@ -316,6 +316,20 @@
 				"note": "sys 通过",
 				"preferredMode": "replace"
 			}
+		},
+		"workbuddy": {
+			"class": "template-patch",
+			"override": true,
+			"inject": true,
+			"hotSwitch": false,
+			"patch": true,
+			"launcher": "WorkBuddy（app.asar.unpacked/resources/templates/*.tpl 模板接管，stash 原字节可逆还原）",
+			"defaultSystemChars": 30965,
+			"purgedSystemChars": 120,
+			"measuredVersion": "5.9.3",
+			"verify": "真实模板注入与 SHA256 无损撤回验证通过；strict 模式彻底抹除宿主身份",
+			"note": "腾讯企业级桌面端；Prompt 模板裸露在 app.asar.unpacked 下，零解包无损接管",
+			"preferredMode": "strict"
 		}
 	},
 	"armorTarget": "https://api.deepseek.com/v1 · deepseek-flash",
