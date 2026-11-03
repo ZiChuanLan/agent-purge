@@ -136,10 +136,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+          NOTES_ARGS=("--generate-notes")
+          if [ -f "docs/releases/$RELEASE_TAG.md" ]; then
+            NOTES_ARGS=("--notes-file" "docs/releases/$RELEASE_TAG.md")
+          elif [ -f "docs/releases/v$VERSION.md" ]; then
+            NOTES_ARGS=("--notes-file" "docs/releases/v$VERSION.md")
+          fi
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
-              --title "agent-purge $VERSION" \
-              --generate-notes --verify-tag
+              --title "agent-purge v$VERSION" \
+              "${NOTES_ARGS[@]}" --verify-tag
+          else
+            gh release edit "$RELEASE_TAG" \
+              --title "agent-purge v$VERSION" \
+              "${NOTES_ARGS[@]}"
+          fi
           gh release upload "$RELEASE_TAG" \
             "release-assets/dist/agent-purge-$VERSION.zip" \
             "release-assets/dist/agent-purge-$VERSION-setup.exe" \

@@ -4,6 +4,8 @@
 
 **一份人设，统一管理多个 coding agent。**
 
+[English](README.en.md) | [日本語](README.ja.md) | 简体中文
+
 [![npm](https://img.shields.io/npm/v/agent-purge)](https://www.npmjs.com/package/agent-purge)
 [![stars](https://img.shields.io/github/stars/ZiChuanLan/agent-purge)](https://github.com/ZiChuanLan/agent-purge/stargazers)
 [![license](https://img.shields.io/npm/l/agent-purge)](LICENSE)

@@ -136,24 +136,91 @@ async function handle(req, res) {
 		return send(res, 200, resClean);
 	}
 	if (req.method === "GET" && p === "/api/update") {
-		const { checkForUpdate, canReplaceSelf } = await import("../lib/update.mjs");
+		const { checkForUpdate, checkNpmVersion, canReplaceSelf, detectInstallType, compareSemver } = await import("../lib/update.mjs");
 		const force = url.searchParams.get("force") === "1";
 		const cacheFile = join(DATA, "update-cache.json");
-		const info = await checkForUpdate({ force, cacheFile });
+		const isExe = canReplaceSelf();
+		const installType = detectInstallType();
+
+		const [ghRes, npmRes] = await Promise.allSettled([
+			checkForUpdate({ force, cacheFile }),
+			checkNpmVersion({ timeout: 3500 })
+		]);
+		const gh = ghRes.status === "fulfilled" ? ghRes.value : { ok: false, error: ghRes.reason?.message };
+		const npm = npmRes.status === "fulfilled" ? npmRes.value : { ok: false, error: npmRes.reason?.message };
+
+		const current = gh.current || npm.current || "0.0.0";
+		let latest = gh.ok && gh.latest ? gh.latest : current;
+		if (npm.ok && npm.latest && compareSemver(latest, npm.latest) > 0) {
+			latest = npm.latest;
+		}
+		const hasUpdate = compareSemver(current, latest) > 0;
+
 		return send(res, 200, {
-			...info,
-			isExe: canReplaceSelf(),
+			ok: gh.ok || npm.ok,
+			current,
+			latest,
+			hasUpdate,
+			installType,
+			isExe,
 			execPath: process.execPath,
+			npm: {
+				ok: npm.ok,
+				latest: npm.latest,
+				hasUpdate: npm.hasUpdate,
+				error: npm.error,
+				command: "npm install -g agent-purge@latest"
+			},
+			github: {
+				ok: gh.ok,
+				latest: gh.latest,
+				hasUpdate: gh.hasUpdate,
+				body: gh.body || "",
+				htmlUrl: gh.htmlUrl,
+				assets: gh.assets || [],
+				error: gh.error
+			},
+			body: gh.body || (hasUpdate ? `发现新版本 v${latest}` : ""),
+			htmlUrl: gh.htmlUrl || "https://github.com/ZiChuanLan/agent-purge/releases/latest"
 		});
 	}
 	if (req.method === "POST" && p === "/api/update-upgrade") {
-		await body(req);
+		const reqPayload = await body(req);
 		const { checkForUpdate, downloadFile, replaceSelfExecutable, canReplaceSelf } = await import("../lib/update.mjs");
+		const isExe = canReplaceSelf();
+		const upgradeType = reqPayload?.type || (isExe ? "exe" : "npm");
+
+		if (upgradeType === "npm") {
+			const { execFile } = await import("node:child_process");
+			const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+			const args = ["install", "-g", "agent-purge@latest"];
+			return new Promise((resolve) => {
+				execFile(npmCmd, args, { timeout: 120000, windowsHide: true }, (error, stdout, stderr) => {
+					if (error) {
+						resolve(send(res, 500, {
+							ok: false,
+							type: "npm",
+							error: `npm 执行出错：${error.message}`,
+							output: (stderr || stdout || "").trim(),
+							command: "npm install -g agent-purge@latest"
+						}));
+					} else {
+						resolve(send(res, 200, {
+							ok: true,
+							type: "npm",
+							message: "npm 全局安装已更新到最新版！请重启 agent-purge 服务以生效。",
+							output: (stdout || "").trim(),
+							command: "npm install -g agent-purge@latest"
+						}));
+					}
+				});
+			});
+		}
+
 		const info = await checkForUpdate({ force: true });
 		if (!info.ok || !info.hasUpdate) {
-			return send(res, 400, { error: info.error || "暂无可用的新版本" });
+			return send(res, 400, { error: info.error || "GitHub Release 暂无可用新版本" });
 		}
-		const isExe = canReplaceSelf();
 		const targetExe = info.assets?.find((a) => a.name.toLowerCase() === "agent-purge.exe");
 		const targetSetup = info.assets?.find((a) => a.name.toLowerCase().endsWith("-setup.exe"));
 

@@ -6,7 +6,10 @@ function node(tag, attrs = {}, ...children) {
   const el = ['svg', 'path'].includes(tag) ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
     if (value === null || value === undefined || value === false) continue;
-    if (key === 'class') el.className = value;
+    if (key === 'class') {
+      if (['svg', 'path'].includes(tag)) el.setAttribute('class', String(value));
+      else el.className = value;
+    }
     else if (key === 'checked' || key === 'hidden' || key === 'disabled') el[key] = Boolean(value);
     else el.setAttribute(key, String(value));
   }
@@ -167,14 +170,150 @@ function miniSelect(h, kind) {
   const what = isPersona ? '人设' : '模式';
   const shown = isPersona ? personaName(state.personas.find(p => p.id === h.persona)) : MODE_LABELS[h.mode] || h.mode;
   const source = current ? '（单独指定）' : `（跟随全局：${globalNow}）`;
-  const select = node('select', {
-    class: `mini-select ${current ? 'is-override' : ''}`,
+
+  const selectedOpt = options.find(o => o.value === current) || options[0];
+
+  // 隐藏的原生 select 供保持底层的 form/change 事件派发机制
+  const nativeSelect = node('select', {
+    class: 'custom-select-native',
+    [isPersona ? 'data-hpersona' : 'data-hmode']: h.id,
+    tabindex: '-1',
+    'aria-hidden': 'true'
+  }, options.map(o => node('option', { value: o.value }, o.label)));
+  nativeSelect.value = current;
+
+  // 现代风格自定义触发按钮
+  const trigger = node('button', {
+    type: 'button',
+    class: `custom-select-trigger ${current ? 'is-override' : ''}`,
     [isPersona ? 'data-hpersona' : 'data-hmode']: h.id,
     title: `${h.id} 的${what}：${shown}${source}`,
-    'aria-label': `${h.id} ${what}`
-  }, options.map(o => node('option', { value: o.value }, o.label)));
-  select.value = current; // 选项就位后才能设选中值
-  return select;
+    'aria-haspopup': 'listbox',
+    'aria-expanded': 'false',
+    'aria-label': `${h.id} ${what}：当前 ${selectedOpt.label}`
+  },
+    node('span', { class: 'custom-select-label' }, selectedOpt.label),
+    node('svg', { class: 'custom-select-chevron', viewBox: '0 0 12 12', width: '9', height: '9', fill: 'none', 'aria-hidden': 'true' },
+      node('path', { d: 'M2.5 4.5L6 8L9.5 4.5', stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+  );
+
+  // 现代风格浮层选项面板
+  const menu = node('div', {
+    class: 'custom-select-menu',
+    role: 'listbox',
+    'aria-label': `${h.id} ${what} 选项`
+  }, options.map(o => {
+    const isSel = o.value === current;
+    return node('div', {
+      class: `custom-select-option ${isSel ? 'is-selected' : ''}`,
+      role: 'option',
+      'data-value': o.value,
+      'aria-selected': String(isSel),
+      tabindex: '-1'
+    },
+      node('span', { class: 'custom-select-option-text' }, o.label),
+      node('svg', { class: 'custom-select-check', viewBox: '0 0 12 12', width: '11', height: '11', fill: 'none', 'aria-hidden': 'true' },
+        node('path', { d: 'M2.5 6.5L4.8 8.8L9.5 3.5', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+    );
+  }));
+
+  return node('div', {
+    class: `custom-select ${current ? 'is-override' : ''}`,
+    'data-custom-select': 'true'
+  }, trigger, menu, nativeSelect);
+}
+
+function initCustomSelects() {
+  document.addEventListener('click', e => {
+    const trigger = e.target.closest('.custom-select-trigger');
+    const option = e.target.closest('.custom-select-option');
+
+    // 点击触发按钮：打开/关闭
+    if (trigger) {
+      e.preventDefault();
+      const container = trigger.closest('.custom-select');
+      if (!container) return;
+      const wasOpen = container.classList.contains('is-open');
+      closeAllCustomSelects();
+      if (!wasOpen) {
+        container.classList.add('is-open');
+        container.closest('.harness-capsule')?.classList.add('has-open-select');
+        trigger.setAttribute('aria-expanded', 'true');
+        // 智能定位：检测距离视口底部空间，不足时向上翻转
+        const menu = container.querySelector('.custom-select-menu');
+        if (menu) {
+          const rect = trigger.getBoundingClientRect();
+          const menuHeight = 180;
+          if (rect.bottom + menuHeight > window.innerHeight && rect.top > menuHeight) {
+            container.classList.add('is-dropup');
+          } else {
+            container.classList.remove('is-dropup');
+          }
+          if (rect.left + 160 > window.innerWidth) {
+            container.classList.add('is-align-right');
+          } else {
+            container.classList.remove('is-align-right');
+          }
+        }
+      }
+      return;
+    }
+
+    // 点击选项：选中并派发原生 change 事件
+    if (option) {
+      e.preventDefault();
+      const container = option.closest('.custom-select');
+      if (!container) return;
+      const native = container.querySelector('.custom-select-native');
+      const val = option.dataset.value;
+      if (native && native.value !== val) {
+        native.value = val;
+        native.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      closeAllCustomSelects();
+      return;
+    }
+
+    // 点击外部：关闭所有打开的下拉
+    closeAllCustomSelects();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closeAllCustomSelects();
+      return;
+    }
+    const open = document.querySelector('.custom-select.is-open');
+    if (!open) return;
+    const items = Array.from(open.querySelectorAll('.custom-select-option'));
+    let idx = items.findIndex(el => el.classList.contains('is-focused'));
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      idx = (idx + 1) % items.length;
+      items.forEach((el, i) => el.classList.toggle('is-focused', i === idx));
+      items[idx]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      idx = (idx - 1 + items.length) % items.length;
+      items.forEach((el, i) => el.classList.toggle('is-focused', i === idx));
+      items[idx]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      if (idx >= 0 && items[idx]) {
+        e.preventDefault();
+        items[idx].click();
+      }
+    }
+  });
+}
+
+function closeAllCustomSelects() {
+  document.querySelectorAll('.custom-select.is-open').forEach(el => {
+    el.classList.remove('is-open', 'is-dropup', 'is-align-right');
+    el.querySelector('.custom-select-trigger')?.setAttribute('aria-expanded', 'false');
+    el.querySelectorAll('.custom-select-option').forEach(opt => opt.classList.remove('is-focused'));
+  });
+  document.querySelectorAll('.harness-capsule.has-open-select').forEach(el => el.classList.remove('has-open-select'));
 }
 function renderHarnesses() {
   $('scope-summary').textContent = scopeSummary(state);
@@ -552,6 +691,50 @@ $('save-apply').addEventListener('click', () => saveEditor(true));
 $('delete-persona').addEventListener('click', () => { if (!confirm(`删除人设“${editor}”？${editor === state.active ? '当前人设将回退并同步到已选范围。' : ''}`)) return; operation(async () => { const result = await api(`persona?id=${encodeURIComponent(editor)}`, null, 'DELETE'); editor = null; editorBaseline = ''; $('editor-form').hidden = true; $('editor-empty').hidden = false; await refresh({ resetDraft: true }); announce(result, '人设已删除。'); }); });
 $('sync-all').addEventListener('click', () => operation(async () => { const r = await api('sync', {}); await refresh(); announce(r, '已重新同步原范围。'); }));
 $('retry-failed').addEventListener('click', () => operation(async () => { const r = await api('sync', { onlyFailed: true }); await refresh(); announce(r, '失败项已重试。'); }));
+let cachedUpdateInfo = null;
+
+function showUpdateDialog(res) {
+  const dialog = $('update-dialog');
+  if (!dialog) return;
+
+  $('update-current-tag').textContent = `当前: v${res.current}`;
+  $('update-latest-tag').textContent = `最新: v${res.latest}`;
+
+  const sources = [];
+  if (res.npm?.ok && res.npm?.latest === res.latest) sources.push('npm');
+  if (res.github?.ok && res.github?.latest === res.latest) sources.push('GitHub');
+  $('update-source-label').textContent = sources.length ? `来源: ${sources.join(' / ')}` : '';
+
+  const changelog = (res.github?.body || res.body || '').trim();
+  $('update-changelog-text').textContent = changelog || '暂无详细发布说明。';
+  $('update-changelog-box').hidden = !changelog;
+
+  const isExe = res.isExe || res.installType === 'exe';
+  const cmdBox = $('update-command-box');
+  const doBtn = $('btn-do-upgrade');
+  const statusEl = $('update-status');
+  statusEl.hidden = true;
+  statusEl.textContent = '';
+  statusEl.className = 'import-status';
+
+  if (isExe) {
+    cmdBox.hidden = true;
+    doBtn.textContent = '一键就地升级';
+    doBtn.title = '自动下载新版 EXE 并进行热替换';
+  } else {
+    cmdBox.hidden = false;
+    $('update-command-text').textContent = res.npm?.command || 'npm install -g agent-purge@latest';
+    doBtn.textContent = '一键执行 npm 升级';
+    doBtn.title = '后台自动调用 npm 全局更新';
+  }
+  doBtn.disabled = false;
+
+  const ghLink = $('update-github-link');
+  if (ghLink) ghLink.href = res.htmlUrl || 'https://github.com/ZiChuanLan/agent-purge/releases/latest';
+
+  dialog.showModal();
+}
+
 async function checkAppUpdate(force = false) {
   const vb = $('version-badge');
   if (!vb) return;
@@ -559,32 +742,81 @@ async function checkAppUpdate(force = false) {
     const res = await api(`update${force ? '?force=1' : ''}`);
     if (!res.ok) {
       vb.textContent = `v${res.current || state?.version || '未知'}`;
-      if (force) notify(`检查更新失败：${res.error}`, 'warn');
+      if (force) notify(`检查更新失败：${res.error || '网络异常'}`, 'warn');
       return;
     }
+    cachedUpdateInfo = res;
     vb.textContent = `v${res.current}`;
     if (res.hasUpdate) {
       vb.className = 'badge good';
       vb.textContent = `v${res.current} (发现 v${res.latest})`;
-      vb.title = `发现新版本 v${res.latest}，点击查看并前往下载`;
+      vb.title = `发现新版本 v${res.latest}，点击查看并一键升级`;
       if (force) {
-        if (confirm(`发现新版本 v${res.latest}！\n\n${(res.body || '无更新说明').slice(0, 300)}\n\n是否前往 GitHub Release 发布页面？`)) {
-          window.open('https://github.com/ZiChuanLan/agent-purge/releases/latest', '_blank', 'noopener,noreferrer');
-        }
+        showUpdateDialog(res);
       }
-    } else if (res.published === false) {
-      vb.className = 'badge';
-      vb.title = '当前没有公开 Release；npm 安装请通过 npm 检查更新';
-      if (force) notify('尚无公开 Release。npm 安装可使用 npm outdated -g agent-purge 检查版本。');
     } else {
       vb.className = 'badge';
       vb.title = `当前版本 v${res.current} 已是最新，点击可重新检查`;
-      if (force) notify('当前已是最新版本！', 'good');
+      if (force) notify(`当前已是最新版本 v${res.current}！（npm 与 GitHub 均已对齐）`, 'good');
     }
   } catch {
     /* 离线或后台探测失败不阻碍主界面 */
   }
 }
-$('version-badge')?.addEventListener('click', () => checkAppUpdate(true));
+
+$('version-badge')?.addEventListener('click', () => {
+  if (cachedUpdateInfo?.hasUpdate) {
+    showUpdateDialog(cachedUpdateInfo);
+  } else {
+    checkAppUpdate(true);
+  }
+});
+$('close-update')?.addEventListener('click', () => $('update-dialog')?.close());
+$('dismiss-update')?.addEventListener('click', () => $('update-dialog')?.close());
+$('copy-update-command')?.addEventListener('click', () => {
+  const cmd = $('update-command-text')?.textContent;
+  if (cmd) {
+    navigator.clipboard?.writeText(cmd).then(() => notify('升级命令已复制！', 'good')).catch(() => {});
+  }
+});
+
+$('btn-do-upgrade')?.addEventListener('click', async () => {
+  if (!cachedUpdateInfo) return;
+  const doBtn = $('btn-do-upgrade');
+  const statusEl = $('update-status');
+  const isExe = cachedUpdateInfo.isExe || cachedUpdateInfo.installType === 'exe';
+
+  doBtn.disabled = true;
+  doBtn.textContent = isExe ? '正在下载替换...' : '正在执行 npm 升级...';
+  statusEl.hidden = false;
+  statusEl.className = 'import-status';
+  statusEl.textContent = isExe ? '正在下载最新版本可执行文件并进行热替换，请稍候...' : '正在调用 npm 执行全局更新，可能需要十几秒...';
+
+  try {
+    const res = await api('update-upgrade', { type: isExe ? 'exe' : 'npm' });
+    if (res.ok) {
+      statusEl.className = 'import-status success';
+      statusEl.textContent = res.message || '升级成功！';
+      doBtn.textContent = '升级完成';
+      notify(res.message || '升级成功！', 'good');
+      setTimeout(() => {
+        $('update-dialog')?.close();
+        checkAppUpdate(true);
+      }, 2500);
+    } else {
+      statusEl.className = 'import-status error';
+      statusEl.textContent = res.error || '更新失败';
+      if (res.output) statusEl.textContent += `\n${res.output}`;
+      doBtn.disabled = false;
+      doBtn.textContent = isExe ? '重试就地升级' : '重试 npm 升级';
+    }
+  } catch (err) {
+    statusEl.className = 'import-status error';
+    statusEl.textContent = err.message || '网络请求异常';
+    doBtn.disabled = false;
+    doBtn.textContent = isExe ? '重试就地升级' : '重试 npm 升级';
+  }
+});
 window.addEventListener('beforeunload', e => { if (configDirty() || editorDirty()) { e.preventDefault(); e.returnValue = ''; } });
+initCustomSelects();
 refresh().then(() => navigate(pageFromHash(), { replace: true, focus: false })).then(() => checkAppUpdate(false)).catch(error => { $('connection').textContent = '本地服务未连接'; notify(`${error.message} 使用右上角“刷新状态”重试。`, 'error'); });

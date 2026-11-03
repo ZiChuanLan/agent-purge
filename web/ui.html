@@ -60,6 +60,35 @@
 </div>
 <div class="dialog-footer"><button type="button" id="cancel-import" class="quiet">取消</button><button type="submit" id="start-import" class="primary">开始拉取</button></div>
 </form></dialog>
+<dialog id="update-dialog" class="modal-dialog">
+<div class="dialog-header"><h2 id="update-dialog-title">发现新版本</h2><button type="button" id="close-update" class="quiet close-btn" aria-label="关闭">✕</button></div>
+<p class="help dialog-desc" id="update-dialog-desc">检查到最新版本发布，支持一键就地升级。</p>
+<div class="dialog-body">
+<div class="update-version-row">
+<span class="badge" id="update-current-tag">当前: v0.0.0</span>
+<span class="update-arrow">→</span>
+<span class="badge good" id="update-latest-tag">最新: v0.0.0</span>
+<span class="muted update-source-label" id="update-source-label">npm / GitHub</span>
+</div>
+<div id="update-changelog-box" class="update-changelog-box">
+<div class="update-changelog-header">更新说明</div>
+<div id="update-changelog-text" class="update-changelog-text"></div>
+</div>
+<div id="update-command-box" class="update-command-box">
+<div class="update-command-label">终端升级命令</div>
+<div class="update-command-row">
+<code id="update-command-text">npm install -g agent-purge@latest</code>
+<button type="button" id="copy-update-command" class="secondary" title="复制升级命令">复制</button>
+</div>
+</div>
+<div id="update-status" class="import-status" hidden></div>
+</div>
+<div class="dialog-footer">
+<button type="button" id="dismiss-update" class="quiet">稍后</button>
+<a id="update-github-link" href="https://github.com/ZiChuanLan/agent-purge/releases/latest" target="_blank" rel="noopener noreferrer" class="button secondary">Release 页面</a>
+<button type="button" id="btn-do-upgrade" class="primary">一键升级</button>
+</div>
+</dialog>
 <div class="library-layout"><aside class="panel persona-sidebar"><label class="sr-only" for="persona-search">搜索人设</label><input id="persona-search" type="search" placeholder="搜索名称或说明"><div id="persona-list"></div></aside>
 <section class="panel editor-panel"><div id="editor-empty" class="empty">选择一份人设，查看或编辑正文。</div><form id="editor-form" hidden>
 <div class="section-heading"><h2 id="editor-title">编辑人设</h2><span id="editor-status" class="muted">未修改</span></div>
