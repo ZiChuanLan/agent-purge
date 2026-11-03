@@ -1,10 +1,13 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { locate } from '../lib/locate.mjs';
 
 console.log('=== ZCode 真实环境配置与注入验证 ===');
 
-const zcodeDir = 'D:/zcode';
+// 装在哪问快捷方式/注册表，别写死 D:/zcode（装在 F: 的机器上直接跑不起来）
+const zcodeHit = locate({ names: ['ZCode'], exe: ['ZCode.exe'], folder: ['zcode'] });
+const zcodeDir = zcodeHit?.dir ?? 'D:/zcode';
 const glmCjs = join(zcodeDir, 'resources/glm/zcode.cjs');
 if (!existsSync(glmCjs)) {
   console.error('未找到 ZCode 核心内核：' + glmCjs);

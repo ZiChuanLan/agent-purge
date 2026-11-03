@@ -29,6 +29,7 @@ const HOT_SVG = {
 const hotBadge = (label, kind = '', icon = 'hot') =>
   node('span', { class: `badge ${kind}` }, HOT_SVG[icon].cloneNode(true), label);
 const empty = label => node('p', { class: 'empty' }, label);
+const INSTALL_SOURCE = { shortcut: '开始菜单快捷方式', registry: '注册表卸载项', guess: '盘符扫描', scan: '盘内浅扫' };
 const HARNESS_ICON_FILES = { pi: 'pi.png', claude: 'claude.ico', codex: 'codex.webp', omp: 'omp.png', dsh: 'dsh.ico', grok: 'grok.ico', hermes: 'hermes.ico', opencode: 'opencode.ico', opencode2: 'opencode2.ico', codebuddy: 'codebuddy.png', zcode: 'zcode.png', workbuddy: 'workbuddy.png', kilo: 'kilo.png' };
 const harnessIcon = (id, size = 24) => {
   // 真实图标在 web/assets/ 下（各官网/favicon 下载），不是手绘 SVG。
@@ -453,7 +454,7 @@ function harnessDetail(h) {
     }),
     ['pi', 'omp'].includes(h.id) && h.armed.includes('slash') && node('label', { class: 'check-label advanced' }, node('input', { type: 'checkbox', 'data-auto': h.id, checked: state[`${h.id}Auto`] }), ' 新会话自动应用（关闭时须 /purge on）'),
     h.id === 'dsh' && h.homeExists && node('div', { class: 'profile-options' }, state.dshAll.map(p => node('label', {}, node('input', { type: 'checkbox', 'data-profile': p, checked: state.dshProfiles.includes(p) }), p))),
-    node('details', { class: 'advanced' }, node('summary', {}, '技术详情与不可用通道'), node('p', { class: 'help' }, `热切能力：${h.caps?.hot?.how || h.caps?.hot?.why || '待核实'}`), node('p', { class: 'help' }, '配置路径：', node('code', { class: 'path' }, h.persistFile || h.home || '—')), node('p', { class: 'help' }, '命令入口：', node('code', { class: 'path' }, h.bin || '未发现')), channels.filter(c => !h.caps?.[c]?.ok).map(c => node('p', { class: 'help' }, `${CHANNEL_LABELS[c]}：${h.caps?.[c]?.why || '不可用'}`))),
+    node('details', { class: 'advanced' }, node('summary', {}, '技术详情与不可用通道'), node('p', { class: 'help' }, `热切能力：${h.caps?.hot?.how || h.caps?.hot?.why || '待核实'}`), node('p', { class: 'help' }, '配置路径：', node('code', { class: 'path' }, h.persistFile || h.home || '—')), h.install && h.install !== h.home ? node('p', { class: 'help' }, '安装目录：', node('code', { class: 'path' }, h.install), h.installSource ? `（${INSTALL_SOURCE[h.installSource] || h.installSource}）` : '') : null, node('p', { class: 'help' }, '命令入口：', node('code', { class: 'path' }, h.bin || '未发现')), channels.filter(c => !h.caps?.[c]?.ok).map(c => node('p', { class: 'help' }, `${CHANNEL_LABELS[c]}：${h.caps?.[c]?.why || '不可用'}`))),
   ];
 }
 function renderPersonas() {
