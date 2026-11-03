@@ -29,7 +29,7 @@ try {
   writeFileSync(browserEvidence, readFileSync(join(ROOT, 'lib/evidence.mjs')));
   writeFileSync(ENTRY,[...assets.map((file,index)=>`import a${index} from ${JSON.stringify(file === 'lib/evidence.mjs' ? browserEvidence.replaceAll('\\','/') : './'+file)} with { type: "file" };`),`globalThis.__AGENT_PURGE_FILES = {${assets.map((file,index)=>`${JSON.stringify(file)}:a${index}`).join(',')}};`,'import("./bin/agent-purge.mjs");'].join('\n'));
   const args=['build',ENTRY,'--compile',`--target=${target}`,`--outfile=${EXE}`,'--asset-naming=[name].[ext]'];
-  if (process.platform==='win32') args.push('--windows-hide-console', `--windows-icon=${join(ROOT,'web/assets/agent-purge.ico')}`, '--windows-title=agent-purge', '--windows-publisher=agent-purge', `--windows-version=${version.split(/[+-]/)[0]}.0`);
+  if (process.platform==='win32') args.push('--windows-hide-console', `--windows-icon=${join(ROOT,'web/assets/agent-purge.ico')}`, '--windows-title=agent-purge', '--windows-publisher=agent-purge', '--windows-description=agent-purge', `--windows-version=${version.split(/[+-]/)[0]}.0`);
   const code = await new Promise((resolve,reject)=>{
     const child=spawnBin('bun',args,{cwd:ROOT,env:{...process.env,TEMP:buildTemp,TMP:buildTemp},stdio:'inherit'});
     child.once('error',reject);child.once('close',resolve);

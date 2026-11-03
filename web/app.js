@@ -817,6 +817,35 @@ $('btn-do-upgrade')?.addEventListener('click', async () => {
     doBtn.textContent = isExe ? '重试就地升级' : '重试 npm 升级';
   }
 });
+$('exit-btn')?.addEventListener('click', async () => {
+  if (configDirty() || editorDirty()) {
+    if (!confirm('当前有未保存的设置或草稿，确定退出并关闭吗？')) return;
+  }
+  $('connection').textContent = '服务已停止';
+  notify('正在退出本地服务并关闭窗口…', 'muted');
+  try {
+    await fetch('/api/exit', { method: 'POST', keepalive: true });
+  } catch {}
+  setTimeout(() => {
+    window.close();
+  }, 200);
+});
+
+// 心跳保活与窗口关闭联动
+setInterval(() => {
+  fetch('/api/heartbeat', { method: 'POST', keepalive: true }).catch(() => {});
+}, 2500);
+
+window.addEventListener('pagehide', () => {
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/exit');
+    } else {
+      fetch('/api/exit', { method: 'POST', keepalive: true }).catch(() => {});
+    }
+  } catch {}
+});
+
 window.addEventListener('beforeunload', e => { if (configDirty() || editorDirty()) { e.preventDefault(); e.returnValue = ''; } });
 initCustomSelects();
 refresh().then(() => navigate(pageFromHash(), { replace: true, focus: false })).then(() => checkAppUpdate(false)).catch(error => { $('connection').textContent = '本地服务未连接'; notify(`${error.message} 使用右上角“刷新状态”重试。`, 'error'); });

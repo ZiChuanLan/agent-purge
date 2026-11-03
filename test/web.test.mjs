@@ -217,3 +217,61 @@ test('POST /api/persona/import 端点导入本地目录', async () => {
   assert.ok(res.personas.some(p => p.id === 'gamma'));
   assert.equal(existsSync(join(data, 'personas', 'gamma.md')), true);
 });
+
+test('POST /api/heartbeat 心跳上报与状态返回', async () => {
+  const res = await api('heartbeat', {});
+  assert.equal(res.ok, true);
+  assert.equal(typeof res.now, 'number');
+  assert.equal(typeof res.autoExit, 'boolean');
+});
+
+test('POST /api/exit 触发优雅退出', async () => {
+  // 单独启动一个临时 Web 服务用于验证退出端点
+  const exitChild = spawn(process.execPath, [resolve('web/server.mjs'), '--serve', '0'], { cwd: sandbox, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let exitUrl;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('exitChild 启动超时')), 10000);
+    exitChild.once('exit', code => { clearTimeout(timer); reject(new Error(`exitChild exited ${code}`)); });
+    exitChild.stdout.on('data', b => {
+      const match = String(b).match(/http:\/\/127\.0\.0\.1:\d+/);
+      if (match) { exitUrl = match[0]; clearTimeout(timer); resolve(); }
+    });
+  });
+
+  const res = await fetch(`${exitUrl}/api/exit`, { method: 'POST', headers: { 'content-type': 'application/json' } });
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(body.ok, true);
+
+  const exitCode = await new Promise(resolve => {
+    const timer = setTimeout(() => { exitChild.kill(); resolve(-1); }, 5000);
+    exitChild.once('exit', code => { clearTimeout(timer); resolve(code); });
+  });
+  assert.equal(exitCode, 0);
+});
+
+test('autoExit: 窗口关闭无心跳后自动超时退出', async () => {
+  const { serveWeb } = await import('../web/server.mjs');
+  let exitedCode = null;
+  const exited = new Promise(resolve => {
+    const server = serveWeb(0, {
+      autoExit: true,
+      heartbeatTimeout: 200,
+      initialConnectTimeout: 10000,
+      onExit: code => { exitedCode = code; resolve(code); }
+    });
+    server.once('listening', async () => {
+      const p = server.address().port;
+      // 模拟前端初次接入并上报心跳
+      await fetch(`http://127.0.0.1:${p}/api/heartbeat`, { method: 'POST' });
+      // 随后前端窗口关闭，不再发送心跳，等待 200ms 后超时自动退出
+    });
+  });
+
+  const code = await Promise.race([
+    exited,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('autoExit 超时未触发退出')), 5000))
+  ]);
+  assert.equal(code, 0);
+  assert.equal(exitedCode, 0);
+});

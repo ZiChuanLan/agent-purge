@@ -45,12 +45,51 @@ let store = null;
 // 同一次实测会拉起真 harness 子进程：同一家同时只能跑一份。
 const verifying = new Set();
 
-export function serveWeb(port = 7788) {
+export function serveWeb(port = 7788, opts = {}) {
+	const { autoExit = false, heartbeatTimeout = 8000, initialConnectTimeout = 30000, onExit = null } = opts;
 	ensureDataHome(isCompiled() ? null : ROOT);
 	store ??= createStore(DATA);
+
+	const heartbeatState = {
+		lastHeartbeat: Date.now(),
+		hasConnected: false,
+	};
+
+	let autoExitTimer = null;
+	const shutdown = (code = 0) => {
+		if (autoExitTimer) { clearInterval(autoExitTimer); autoExitTimer = null; }
+		const doExit = () => {
+			if (typeof onExit === "function") onExit(code);
+			else process.exit(code);
+		};
+		if (server.listening) {
+			server.close(() => doExit());
+			setTimeout(doExit, 1000).unref();
+		} else {
+			doExit();
+		}
+	};
+
+	if (autoExit) {
+		const startTime = Date.now();
+		autoExitTimer = setInterval(() => {
+			const now = Date.now();
+			if (!heartbeatState.hasConnected) {
+				if (now - startTime > initialConnectTimeout) {
+					shutdown(0);
+				}
+			} else if (now - heartbeatState.lastHeartbeat > heartbeatTimeout) {
+				shutdown(0);
+			}
+		}, 2000);
+		autoExitTimer.unref();
+	}
+
+	const ctx = { heartbeatState, shutdown, autoExit };
+
 	// handle 是 async：任何异常都在这里收口，否则请求会挂着不响应
 	const server = createServer((req, res) => {
-		handle(req, res).catch((e) => {
+		handle(req, res, ctx).catch((e) => {
 			try {
 				send(res, e.statusCode ?? (/另一个配置操作|锁/.test(e.message) ? 409 : 500), { error: e.message });
 			} catch {}
@@ -72,7 +111,7 @@ export function serveWeb(port = 7788) {
 	return server;
 }
 
-async function handle(req, res) {
+async function handle(req, res, ctx = {}) {
 	if (!localHost(req)) return send(res, 403, { error: "只接受本机 Host" });
 	const url = new URL(req.url, "http://127.0.0.1");
 	const p = url.pathname;
@@ -111,6 +150,22 @@ async function handle(req, res) {
 		} catch (error) {
 			return send(res, 500, { error: `验证报告读取失败：${error.message}` });
 		}
+	}
+	if (req.method === "POST" && p === "/api/heartbeat") {
+		if (ctx.heartbeatState) {
+			ctx.heartbeatState.lastHeartbeat = Date.now();
+			ctx.heartbeatState.hasConnected = true;
+		}
+		return send(res, 200, { ok: true, now: Date.now(), autoExit: Boolean(ctx.autoExit) });
+	}
+	if (req.method === "POST" && p === "/api/exit") {
+		send(res, 200, { ok: true, message: "服务正在退出" });
+		if (typeof ctx.shutdown === "function") {
+			setTimeout(() => ctx.shutdown(0), 100);
+		} else {
+			setTimeout(() => process.exit(0), 100);
+		}
+		return;
 	}
 	if (req.method === "GET" && p === "/api/state") return send(res, 200, await state(url.searchParams.get("versions") === "1"));
 	if (req.method === "GET" && p === "/api/armor") return send(res, 200, armorState());
@@ -645,4 +700,7 @@ function body(req) {
 // 编译态 import.meta.url 也是 exe 路径，光比路径会把 exe 误当入口：只认 .mjs 脚本。
 const selfPath = fileURLToPath(import.meta.url);
 const isEntry = Boolean(process.argv[1]) && selfPath.endsWith(".mjs") && resolve(process.argv[1]) === selfPath;
-if (isEntry && process.argv.includes("--serve")) serveWeb(Number(process.argv[process.argv.indexOf("--serve") + 1] ?? 7788));
+if (isEntry && process.argv.includes("--serve")) {
+	const servePort = Number(process.argv[process.argv.indexOf("--serve") + 1] ?? 7788);
+	serveWeb(servePort, { autoExit: process.argv.includes("--auto-exit") });
+}

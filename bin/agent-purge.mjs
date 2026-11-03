@@ -48,7 +48,7 @@ if (recovered > 0) console.log(`[restore] 回滚了 ${recovered} 个上次残留
 if (argv[0] === "--serve") {
 	const port = argv[1] === undefined ? 7788 : Number(argv[1]);
 	if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("端口必须为 0..65535 的整数");
-	serveWeb(port);
+	serveWeb(port, { autoExit: argv.includes("--auto-exit") });
 	await new Promise(() => {});
 }
 const flag = (name, fallback) => {
@@ -62,7 +62,7 @@ let cmd = argv[0];
 
 // 便携版 exe 双击无参数启动时，默认直接打开原生桌面窗口应用
 if (!cmd && isCompiled()) {
-	await webCmd();
+	await webCmd({ autoExit: !argv.includes("--no-auto-exit") });
 	// 挂住事件循环
 	await new Promise(() => {});
 }
@@ -701,10 +701,11 @@ async function lsCmd() {
 	console.log(`\n* = active（agent-purge use <id> 切换）`);
 }
 
-async function webCmd() {
+async function webCmd(options = {}) {
 	const port = Number(flag("--port", "7788"));
 	if (!Number.isInteger(port) || port < 0 || port > 65535) die("端口必须为 0..65535 的整数");
 	const noOpen = argv.includes("--no-open");
+	const autoExit = options.autoExit ?? (argv.includes("--auto-exit") || (isCompiled() && !argv.includes("--no-auto-exit")));
 	const url = `http://127.0.0.1:${port}`;
 	const { openAppWindow } = await import("../lib/window.mjs");
 
@@ -712,7 +713,9 @@ async function webCmd() {
 	if (argv.includes("--detach")) {
 		if (port === 0) die("--detach 需要明确端口；随机端口请用前台 web --port 0 --no-open");
 		// 源码态 execPath 是 node，得连脚本路径一起给；编译态 execPath 就是 exe 本体
-		const serve = isCompiled() ? ["--serve", String(port)] : [join(ROOT, "web", "server.mjs"), "--serve", String(port)];
+		const serveArgs = ["--serve", String(port)];
+		if (autoExit) serveArgs.push("--auto-exit");
+		const serve = isCompiled() ? serveArgs : [join(ROOT, "web", "server.mjs"), ...serveArgs];
 		const child = spawn(process.execPath, serve, {
 			detached: true,
 			stdio: "ignore",
@@ -729,7 +732,7 @@ async function webCmd() {
 		process.exit(0);
 	}
 
-	const server = serveWeb(port);
+	const server = serveWeb(port, { autoExit });
 	if (!noOpen) {
 		server.once("listening", () => {
 			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`);
