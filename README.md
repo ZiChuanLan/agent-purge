@@ -155,6 +155,7 @@ agent-purge status
 | CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口已验证；热切未验证 |
 | Kilo Code | @kilocode/cli 7.8.18 | off/strict/replace/append 四模式真实抓包；system 层 marker=1 |
 | WorkBuddy | 5.9.3 | 身份上下文已验证；热切未验证 |
+| PI-Desktop | 0.21.0（便携版） | 已实测：常驻写 `~/.pi/agent/SYSTEM.md`；热切装在 `plugins/imported` 的 imported 插件里，同一会话换人设/`/purge off` 下一轮生效 |
 
 首次安装或更新插件代码后，仍需重新加载宿主。**配置写入、历史测试通过、当前会话实际生效，是不同状态。**
 

@@ -104,3 +104,25 @@ test("scanDrives: 跳过系统目录，找不到就返回空", (t) => {
 test("locate: 什么都没找到时返回 null", () => {
 	assert.equal(locate({ names: ["Nope"], exe: ["Nope.exe"], folder: ["Nope"] }, sources()), null);
 });
+
+test("locate: 便携版 exe 带版本号也能认（PI-Desktop-Portable-0.21.0.exe）", (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-portable-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const deep = join(dir, "Vivaldi");
+	mkdirSync(deep, { recursive: true });
+	writeFileSync(join(deep, "PI-Desktop-Portable-0.21.0.exe"), "", "utf8");
+
+	const hit = locate(
+		{ names: ["PI-Desktop"], exe: ["PI-Desktop.exe", "PI-Desktop-Portable*.exe"], folder: ["PI-Desktop"] },
+		sources({ drives: [dir] }),
+	);
+	assert.equal(hit.dir, deep);
+	assert.equal(hit.exe, join(deep, "PI-Desktop-Portable-0.21.0.exe"));
+	assert.equal(hit.source, "scan");
+});
+
+test("matchExeName: 通配符只按显式 * 生效，antigravity-tools 不会冒充 Antigravity.exe", async () => {
+	const { matchExeName } = await import("../lib/locate.mjs");
+	assert.equal(matchExeName("PI-Desktop-Portable-0.21.0.exe", "PI-Desktop-Portable*.exe"), true);
+	assert.equal(matchExeName("antigravity-tools.exe", "Antigravity.exe"), false);
+});

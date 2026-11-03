@@ -31,6 +31,7 @@ const DATA = dataHome();
 const LAYER = {
 	pi: "sys", codex: "sys", codebuddy: "sys", claude: "sys", grok: "sys",
 	omp: "sys", opencode: "sys", hermes: "sys", antigravity: "sys", workbuddy: "sys", kilo: "sys",
+	"pi-desktop": "sys",
 	// zcode 的内核 bundle 已核对：读取 ~/.zcode/AGENTS.md，且支持 customSystemPrompt
 	zcode: "sys",
 };

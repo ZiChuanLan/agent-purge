@@ -56,6 +56,21 @@
         "note": "sys 通过"
       }
     },
+    "pi-desktop": {
+      "class": "config",
+      "override": true,
+      "inject": true,
+      "hotSwitch": true,
+      "patch": false,
+      "launcher": "PI-Desktop（~/.pi/agent/SYSTEM.md 替换 persona 块；热切走 imported 插件扩展）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "0.21.0",
+      "verify": "本机 0.21.0 便携版真实会话：装 imported 插件后新会话自称「小码酱」，同会话改 state.json 人设下一轮变「大肥鱼」，/purge off 后恢复 Gemini；SYSTEM.md 常驻另测（写入→自称测试体→卸载→恢复）",
+      "residue": "宿主操作规则/tool 指南保留；项目 .pi/SYSTEM.md 优先级高于全局；与 pi CLI 共用 ~/.pi/agent",
+      "note": "Electron + Rust host + pi Agent Harness；扩展只能由插件贡献（ADR 0215），agent-purge 以 imported 插件装 ExtensionAPI，/purge 与换人设热切换",
+      "preferredMode": "replace"
+    },
     "opencode": {
       "class": "plugin",
       "override": true,

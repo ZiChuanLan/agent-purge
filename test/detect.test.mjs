@@ -23,6 +23,8 @@ function sandbox(t) {
 		ProgramData: process.env.ProgramData,
 		PUBLIC: process.env.PUBLIC,
 		AGENT_PURGE_DRIVES: process.env.AGENT_PURGE_DRIVES,
+		PI_DESKTOP_DATA_DIR: process.env.PI_DESKTOP_DATA_DIR,
+		PI_DESKTOP_AGENT_DIR: process.env.PI_DESKTOP_AGENT_DIR,
 	};
 	process.env.USERPROFILE = home;
 	process.env.HOME = home;
@@ -36,6 +38,7 @@ function sandbox(t) {
 	process.env.PUBLIC = join(root, "Public");
 	process.env.AGENT_PURGE_DRIVES = join(root, "no-drive");
 	process.env.PATH = "";
+	for (const key of ["PI_DESKTOP_DATA_DIR", "PI_DESKTOP_AGENT_DIR"]) delete process.env[key];
 	t.after(() => {
 		for (const [k, v] of Object.entries(saved)) {
 			if (v === undefined) delete process.env[k];
@@ -123,4 +126,14 @@ test("detect: 新装但还没写过配置文件的 CLI 也算装上（配置根�
 	const claude = detect().claude;
 	assert.equal(claude.found, true, "claude 新装没有 settings.json，不能因此算没装");
 	assert.equal(claude.home, join(home, ".claude"));
+});
+
+test("detect: PI-Desktop 只看自己的数据根，不把 pi CLI 当成 PI-Desktop", (t) => {
+	const home = sandbox(t);
+	mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+	assert.equal(detect()["pi-desktop"].found, false, "~/.pi/agent 是 pi CLI 的，不是 PI-Desktop 的");
+
+	mkdirSync(join(home, ".pi-desktop", "plugins"), { recursive: true });
+	assert.equal(detect()["pi-desktop"].found, true);
+	assert.equal(detect()["pi-desktop"].home, join(home, ".pi-desktop"));
 });
