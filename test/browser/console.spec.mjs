@@ -44,7 +44,7 @@ const test = base.extend({
     page.on('pageerror', error => errors.push(error.message));
     // Update checks stay offline. Everything else goes to the real isolated server.
     await page.route('**/api/update*', route => route.fulfill({
-      json: { ok: true, current: '0.2.11', latest: '0.2.11', published: false, hasUpdate: false },
+      json: { ok: true, current: '0.2.14', latest: '0.2.14', hasUpdate: false },
     }));
     await page.goto(app.url);
     await expect(page.locator('#connection')).toContainText('已连接');
@@ -81,7 +81,7 @@ test('draft refresh, keyboard update action, unsaved navigation and metadata pre
   await expect(page.locator('#version-badge')).toBeEnabled();
   await page.locator('#version-badge').focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('#notice')).toContainText('尚无公开 Release');
+  await expect(page.locator('#notice')).toContainText('已是最新版本');
   await page.locator('#edit-current').click();
   await page.locator('#edit-body').fill('DRAFT <img src=x onerror=alert(1)>');
   page.once('dialog', dialog => dialog.dismiss());
