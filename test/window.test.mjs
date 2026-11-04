@@ -17,3 +17,12 @@ test('missing/headless browser reports a manual URL without an uncaught spawn er
     spawnProcess: () => { throw new Error('spawn failed'); }, onError: () => {},
   }).mode, 'manual');
 });
+
+test('openAppWindow passes windowsHide: false so Chromium window is visible (issue #9)', () => {
+  let capturedOpts = null;
+  const child = Object.assign(new EventEmitter(), { unref() {}, pid: 456 });
+  openAppWindow('http://127.0.0.1:12345', {
+    spawnProcess: (_cmd, _args, opts) => { capturedOpts = opts; return child; },
+  });
+  assert.equal(capturedOpts?.windowsHide, false, 'browser window should not be spawned hidden with SW_HIDE');
+});

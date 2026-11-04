@@ -275,3 +275,27 @@ test('autoExit: 窗口关闭无心跳后自动超时退出', async () => {
   assert.equal(code, 0);
   assert.equal(exitedCode, 0);
 });
+
+test('serveWeb: custom onError intercepts EADDRINUSE without immediate exit (issue #9)', async () => {
+  const { serveWeb } = await import('../web/server.mjs');
+  const first = serveWeb(0);
+  await new Promise(resolve => first.once('listening', resolve));
+  const occupiedPort = first.address().port;
+
+  let capturedError = null;
+  serveWeb(occupiedPort, {
+    onError: (err) => { capturedError = err; }
+  });
+
+  await new Promise(resolve => setTimeout(resolve, 200));
+  assert.equal(capturedError?.code, 'EADDRINUSE');
+
+  // 探活已有服务状态
+  const stateRes = await fetch(`http://127.0.0.1:${occupiedPort}/api/state`);
+  assert.equal(stateRes.ok, true);
+  const state = await stateRes.json();
+  assert.equal(typeof state, 'object');
+  assert.ok('version' in state || 'personas' in state);
+
+  await new Promise(resolve => first.close(resolve));
+});

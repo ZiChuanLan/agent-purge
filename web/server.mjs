@@ -47,7 +47,7 @@ let store = null;
 const verifying = new Set();
 
 export function serveWeb(port = 7788, opts = {}) {
-	const { autoExit = false, heartbeatTimeout = 8000, initialConnectTimeout = 30000, onExit = null } = opts;
+	const { autoExit = false, heartbeatTimeout = 8000, initialConnectTimeout = 30000, onExit = null, onError = null } = opts;
 	ensureDataHome(isCompiled() ? null : ROOT);
 	store ??= createStore(DATA);
 
@@ -96,7 +96,10 @@ export function serveWeb(port = 7788, opts = {}) {
 			} catch {}
 		});
 	});
-	server.on("error", (e) => {
+	server.on("error", async (e) => {
+		if (typeof onError === "function") {
+			try { await onError(e); return; } catch {}
+		}
 		// 端口被旧实例占着的时候，--detach 是静默的 → 这里必须说人话，否则用户看到的是旧 UI
 		if (e.code === "EADDRINUSE") {
 			console.error(`${port} 已被占用：老实例还在跑（可能是改动前的版本，UI 会是旧的）。`);
