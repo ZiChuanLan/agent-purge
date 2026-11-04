@@ -44,7 +44,7 @@ const test = base.extend({
     page.on('pageerror', error => errors.push(error.message));
     // Update checks stay offline. Everything else goes to the real isolated server.
     await page.route('**/api/update*', route => route.fulfill({
-      json: { ok: true, current: '0.2.17', latest: '0.2.17', hasUpdate: false },
+      json: { ok: true, current: '0.2.18', latest: '0.2.18', hasUpdate: false },
     }));
     await page.goto(app.url);
     await expect(page.locator('#connection')).toContainText('已连接');
