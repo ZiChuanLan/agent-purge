@@ -44,6 +44,7 @@ test('fresh install: static assets, CSP, no path traversal, power-off without de
   assert.equal((await api('state')).defaultsSet, true);
   await api('defaults', { harness: null });
   const markup = await html.text();
+  assert.match(markup, /<meta name="ap-server-gen" content="\d+">/, 'HTML 要带上本代编号，供页面卸载时对账');
   const idPattern = markup.match(/id="edit-id"[^>]*pattern="([^"]+)"/)[1];
   // HTML pattern uses Unicode sets (/v); an unescaped hyphen disables browser validation.
   const idRegex = new RegExp(`^(?:${idPattern})$`, 'v');
@@ -248,6 +249,46 @@ test('POST /api/exit 触发优雅退出', async () => {
     exitChild.once('exit', code => { clearTimeout(timer); resolve(code); });
   });
   assert.equal(exitCode, 0);
+});
+
+test('POST /api/leave 源码态只当作"页面走了"：刷新不会把服务带走', async () => {
+  // 前端 pagehide 会发 /api/leave；以前发的 /api/exit 会让"刷新两次"直接把服务刷死。
+  const gen = (await (await fetch(url)).text()).match(/name="ap-server-gen" content="(\d+)"/)[1];
+  const res = await api(`leave?gen=${gen}`, {});
+  assert.equal(res.ok, true);
+  assert.equal(res.exit, false, '没有 --auto-exit（终端托管）时不该自杀');
+  await new Promise(r => setTimeout(r, 300));
+  assert.ok((await api('state')).harnesses.length > 0, '服务仍在响应');
+});
+
+test('autoExit: 刷新撤销下线倒计时，旧页面迟到的 beacon 不算数', async () => {
+  const { serveWeb } = await import('../web/server.mjs');
+  let resolveExit;
+  const exited = new Promise(r => { resolveExit = r; });
+  const server = serveWeb(0, {
+    autoExit: true,
+    heartbeatTimeout: 60000,
+    initialConnectTimeout: 60000,
+    onExit: code => resolveExit(code)
+  });
+  await new Promise(r => server.once('listening', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const genOf = async () => (await (await fetch(base)).text()).match(/name="ap-server-gen" content="(\d+)"/)[1];
+  const leave = async (gen) => (await fetch(`${base}/api/leave?gen=${gen}`, { method: 'POST' })).json();
+
+  const first = await genOf();
+  assert.equal((await leave(first)).exit, true, '页面卸载 → 起下线倒计时');
+  const second = await genOf();
+  assert.equal((await leave(first)).exit, false, '上一代页面的 beacon 迟到，必须忽略');
+  await new Promise(r => setTimeout(r, 2000));
+  assert.equal(server.listening, true, '刷新后的新页面已撤销倒计时');
+
+  assert.equal((await leave(second)).exit, true);
+  const code = await Promise.race([
+    exited,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('页面真的关掉后未退出')), 5000))
+  ]);
+  assert.equal(code, 0);
 });
 
 test('autoExit: 窗口关闭无心跳后自动超时退出', async () => {
