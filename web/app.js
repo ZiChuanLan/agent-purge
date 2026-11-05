@@ -837,12 +837,18 @@ setInterval(() => {
   fetch('/api/heartbeat', { method: 'POST', keepalive: true }).catch(() => {});
 }, 2500);
 
-window.addEventListener('pagehide', () => {
+window.addEventListener('pagehide', event => {
+  // 进 bfcache 不是关闭（回退还能接着用），别在那里埋退出倒计时
+  if (event.persisted) return;
   try {
+    // 刷新也会触发 pagehide，所以这里只上报"这一代页面走了"，是否退出由服务端裁决：
+    // 源码态 `agent-purge web` 不会退，桌面窗口会留宽限期等新页面来撤销。
+    const gen = document.querySelector('meta[name="ap-server-gen"]')?.getAttribute('content') ?? '';
+    const target = `/api/leave?gen=${encodeURIComponent(gen)}`;
     if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/exit');
+      navigator.sendBeacon(target);
     } else {
-      fetch('/api/exit', { method: 'POST', keepalive: true }).catch(() => {});
+      fetch(target, { method: 'POST', keepalive: true }).catch(() => {});
     }
   } catch {}
 });

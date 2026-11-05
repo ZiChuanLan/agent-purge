@@ -74,6 +74,16 @@ test('issues #1/#6: fresh defaults save without toggling modes; legacy deep link
   expect(state.default.mode).toBe('replace');
 });
 
+test('reload twice keeps the local service alive (pagehide must not kill it)', async ({ page, app }) => {
+  // 回归：pagehide 曾经直发 /api/exit，浏览器里刷新一两次服务就没了，页面显示"本地服务未连接"。
+  for (let i = 0; i < 2; i++) {
+    await page.reload();
+    await expect(page.locator('#connection')).toContainText('已连接');
+  }
+  const response = await page.request.get(`${app.url}/api/state`);
+  expect(response.status()).toBe(200);
+});
+
 test('draft refresh, keyboard update action, unsaved navigation and metadata preservation', async ({ page, app }) => {
   await page.locator('[name=mode][value=append]').check();
   await page.locator('#refresh').click();

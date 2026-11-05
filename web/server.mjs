@@ -56,8 +56,13 @@ export function serveWeb(port = 7788, opts = {}) {
 		hasConnected: false,
 	};
 
+	// gen：每次发出页面 HTML 都 +1。页面卸载时带着自己那份 gen 上报，
+	// 过期的（上一个页面）一律忽略——否则旧页面的 beacon 晚到，会把刚刷出来的新页面一起带走。
+	const ctx = { heartbeatState, autoExit, gen: 0, leaveTimer: null };
+
 	let autoExitTimer = null;
 	const shutdown = (code = 0) => {
+		clearLeave(ctx);
 		if (autoExitTimer) { clearInterval(autoExitTimer); autoExitTimer = null; }
 		const doExit = () => {
 			if (typeof onExit === "function") onExit(code);
@@ -86,7 +91,7 @@ export function serveWeb(port = 7788, opts = {}) {
 		autoExitTimer.unref();
 	}
 
-	const ctx = { heartbeatState, shutdown, autoExit };
+	ctx.shutdown = shutdown;
 
 	// handle 是 async：任何异常都在这里收口，否则请求会挂着不响应
 	const server = createServer((req, res) => {
@@ -120,11 +125,15 @@ async function handle(req, res, ctx = {}) {
 	const url = new URL(req.url, "http://127.0.0.1");
 	const p = url.pathname;
 
+	// 有请求就说明还有页面活着（刷新、重开、资源加载都算）：撤掉上一个页面留下的退出倒计时。
+	// 关键：刷新时 pagehide 先发、新页面请求随后到，这里负责把"刷新"和"关窗口"分开。
+	clearLeave(ctx);
+
 	// 防 CSRF：本机 Web 页面能 POST 就能写配置/改人设；跨站页面用 text/plain 也能发“简单请求”。
 	// 只放同源：Origin 的 host 必须和本次请求的 Host 完全一致（端口不同也挡住）。
 	if (isMutating(req.method) && !sameOrigin(req)) return send(res, 403, { error: "只接受本机同源请求" });
 
-	if (req.method === "GET" && (p === "/" || p === "/index.html")) return html(res);
+	if (req.method === "GET" && (p === "/" || p === "/index.html")) return html(res, ctx);
 	const assets = { '/app.js': 'text/javascript', '/model.mjs': 'text/javascript', '/evidence.mjs': 'text/javascript', '/styles.css': 'text/css' };
 	if (req.method === "GET" && Object.hasOwn(assets, p)) {
 		res.writeHead(200, { 'content-type': `${assets[p]}; charset=utf-8`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
@@ -170,6 +179,19 @@ async function handle(req, res, ctx = {}) {
 			setTimeout(() => process.exit(0), 100);
 		}
 		return;
+	}
+	if (req.method === "POST" && p === "/api/leave") {
+		// 页面卸载（刷新/关标签/关窗口）时发的信号。刷新和关窗口在浏览器里长得一样，
+		// 所以这里不立刻退：先等宽限期，新页面只要发出任何请求就会撤销（见 clearLeave）。
+		// 源码态 `agent-purge web` 归终端管，页面来去与它无关——永不自杀。
+		req.resume();
+		const gen = url.searchParams.get("gen");
+		const live = Boolean(ctx.autoExit) && gen !== null && gen === String(ctx.gen);
+		if (live) {
+			ctx.leaveTimer = setTimeout(() => { ctx.leaveTimer = null; ctx.shutdown(0); }, LEAVE_GRACE);
+			ctx.leaveTimer.unref?.();
+		}
+		return send(res, 200, { ok: true, exit: live });
 	}
 	if (req.method === "GET" && p === "/api/state") return send(res, 200, await state(url.searchParams.get("versions") === "1"));
 	if (req.method === "GET" && p === "/api/armor") return send(res, 200, armorState());
@@ -642,10 +664,23 @@ function localHost(req) {
 			url.host === host.toLowerCase() && Number(url.port || 80) === req.socket.localPort;
 	} catch { return false; }
 }
-const html = (res) =>
-	res
+const html = (res, ctx = {}) => {
+	// 每次发页面都换一个代号：/api/leave 只认自己那一代，旧页面的 beacon 晚到也不会误伤新页面
+	const gen = String((ctx.gen = (ctx.gen ?? 0) + 1));
+	const page = readResource("web/ui.html").toString("utf8")
+		.replace('<meta name="ap-server-gen" content="">', `<meta name="ap-server-gen" content="${gen}">`);
+	return res
 		.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" })
-		.end(readResource("web/ui.html").toString("utf8"));
+		.end(page);
+};
+
+// 刷新页面时 pagehide 会先于新页面的请求到达：留一个宽限期，让"关窗口"和"刷新"各归各位。
+const LEAVE_GRACE = 1500;
+function clearLeave(ctx) {
+	if (!ctx?.leaveTimer) return;
+	clearTimeout(ctx.leaveTimer);
+	ctx.leaveTimer = null;
+}
 
 function isMutating(method) {
 	return method === "POST" || method === "PUT" || method === "PATCH" || method === "DELETE";
