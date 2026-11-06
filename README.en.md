@@ -130,7 +130,7 @@ The following table summarizes verification status across supported agents. Requ
 | Codex / Claude Code | 0.166.0 / 2.1.316 | Launch entry verified; hot-switching unverified |
 | CodeBuddy / Grok | 2.179.0 / 1.0.73 | Launch entry verified; hot-switching unverified |
 | Kilo Code | @kilocode/cli 7.8.18 | All 4 modes verified via live capture; marker confirmed in system layer |
-| WorkBuddy | 5.9.3 | Dual-channel identity context (`IDENTITY.md`, `SOUL.md`, `USER.md` & `customPrompt`) verified; hot-switching unverified |
+| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | Identity context verified (`IDENTITY.md`, `SOUL.md`, `USER.md` & `customPrompt`; the international build stores it in `app/app-config.json`); hot-switching unverified |
 
 Detailed compatibility notes, request role mappings, and known limitations are documented in [docs/compatibility.md](docs/compatibility.md).
 

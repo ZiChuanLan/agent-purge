@@ -106,6 +106,30 @@ test("detect: WorkBuddy 完全没装时仍是未安装", (t) => {
 	assert.equal(detect().workbuddy.homeExists, false);
 });
 
+test("detect: WorkBuddy AI 国际版安装目录（WorkBuddyAI.exe）被正确识别", (t) => {
+	const home = sandbox(t);
+	const install = join(home, "AppData", "Local", "Programs", "WorkBuddyAI");
+	mkdirSync(join(install, "resources"), { recursive: true });
+	writeFileSync(join(install, "WorkBuddyAI.exe"), "", "utf8");
+
+	const wbAi = detect()["workbuddy-ai"];
+	assert.equal(wbAi.found, true);
+	assert.equal(wbAi.homeExists, true);
+	assert.equal(detect().workbuddy.found, false, "国际版不应触发国内版命中");
+});
+
+test("detect: WorkBuddy AI 国际版靠 ~/.workbuddy-ai 认出来，并把配置根指向它", (t) => {
+	const home = sandbox(t);
+	const cfg = join(home, ".workbuddy-ai");
+	mkdirSync(cfg, { recursive: true });
+	writeFileSync(join(cfg, "settings.json"), "{}\n", "utf8");
+
+	const wbAi = detect()["workbuddy-ai"];
+	assert.equal(wbAi.found, true);
+	assert.equal(wbAi.home, cfg);
+	assert.equal(detect().workbuddy.found, false, "国际版配置根不应触发国内版命中");
+});
+
 test("detect: 桌面端装在 F 盘（不在任何默认目录）也能靠盘符扫到", (t) => {
 	const home = sandbox(t);
 	const root = dirname(home);

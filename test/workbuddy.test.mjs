@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CORE_TEMPLATES, installWorkbuddy, installWorkbuddyPrompt, patchTemplateContent, uninstallWorkbuddy, uninstallWorkbuddyPrompt, workbuddySettingsFile } from "../lib/workbuddy.mjs";
+import { CORE_TEMPLATES, installWorkbuddy, installWorkbuddyPrompt, patchTemplateContent, uninstallWorkbuddy, uninstallWorkbuddyPrompt, workbuddyActiveFile, workbuddyPromptBlocked, workbuddySettingsFile } from "../lib/workbuddy.mjs";
 
 test("workbuddy: patchTemplateContent in strict/replace/append modes", () => {
 	const original = `This conversation is powered by {{ modelName }}\n\nYour main goal is to follow the USER's instructions...\nYou are WorkBuddy.\n{{ WorkbuddyMemory_1 }}\n{{ UserInstructionsContent }}\n`;
@@ -135,6 +135,144 @@ test("workbuddy: user identity and soul files sync and restore", () => {
 	} finally {
 		if (previous === undefined) delete process.env.WORKBUDDY_CONFIG_DIR;
 		else process.env.WORKBUDDY_CONFIG_DIR = previous;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("workbuddy-ai: settings customPrompt install and uninstall with ~/.workbuddy-ai", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-wb-ai-test-"));
+	const apHome = join(dir, "ap-data");
+	const previous = process.env.WORKBUDDY_AI_CONFIG_DIR;
+	process.env.WORKBUDDY_AI_CONFIG_DIR = dir;
+	const file = workbuddySettingsFile("workbuddy-ai");
+	writeFileSync(file, JSON.stringify({ locale: "en-US", personalization: { customPrompt: "original prompt", toneStyle: "professional" } }, null, 2) + "\n");
+	const userDir = join(dir, "user-ai-personal");
+	mkdirSync(userDir, { recursive: true });
+	const origIdentity = "- **Name:** WorkBuddyAI\n";
+	writeFileSync(join(userDir, "IDENTITY.md"), origIdentity, "utf8");
+	writeFileSync(join(userDir, "SOUL.md"), "# SOUL\nOriginal\n", "utf8");
+
+	const persona = "你是 **OceanFish**。";
+	try {
+		const installed = installWorkbuddyPrompt(apHome, { personaText: persona, mode: "replace", harness: "workbuddy-ai" });
+		assert.equal(installed.status, "installed");
+		const settings = JSON.parse(readFileSync(file, "utf8"));
+		assert.match(settings.personalization.customPrompt, /# >>> agent-purge:workbuddy-ai/);
+		assert.match(settings.personalization.customPrompt, /OceanFish/);
+		assert.equal(settings.personalization.toneStyle, "professional");
+
+		const identityAfter = readFileSync(join(userDir, "IDENTITY.md"), "utf8");
+		assert.match(identityAfter, /- \*\*Name:\*\* OceanFish/);
+
+		const restored = uninstallWorkbuddyPrompt(apHome, { harness: "workbuddy-ai" });
+		assert.equal(restored.status, "restored");
+		const after = JSON.parse(readFileSync(file, "utf8"));
+		assert.equal(after.personalization.customPrompt, "original prompt");
+		assert.equal(after.personalization.toneStyle, "professional");
+		assert.equal(readFileSync(join(userDir, "IDENTITY.md"), "utf8"), origIdentity);
+	} finally {
+		if (previous === undefined) delete process.env.WORKBUDDY_AI_CONFIG_DIR;
+		else process.env.WORKBUDDY_AI_CONFIG_DIR = previous;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("workbuddy: 国内版同样以 app/app-config.json 为主路径（5.9.3 实测）", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-wb-cn-app-"));
+	const apHome = join(dir, ".agent-purge");
+	mkdirSync(join(apHome, "personas"), { recursive: true });
+	mkdirSync(join(dir, ".workbuddy", "app"), { recursive: true });
+	const settingsFile = join(dir, ".workbuddy", "settings.json");
+	const appConfigFile = join(dir, ".workbuddy", "app", "app-config.json");
+	writeFileSync(settingsFile, JSON.stringify({ sandbox: { mode: "workspace" } }, null, 2) + "\n", "utf8");
+	writeFileSync(appConfigFile, JSON.stringify({ locale: "zh-CN", personalization: { customPrompt: "cn prompt" } }, null, 2) + "\n", "utf8");
+
+	const previous = process.env.WORKBUDDY_CONFIG_DIR;
+	process.env.WORKBUDDY_CONFIG_DIR = join(dir, ".workbuddy");
+	try {
+		assert.equal(workbuddyActiveFile("workbuddy"), appConfigFile, "国内版有 app-config.json 时也该写它");
+		const installed = installWorkbuddyPrompt(apHome, { personaText: "你叫小满。", mode: "replace", harness: "workbuddy" });
+		assert.equal(installed.file, appConfigFile);
+		const app = JSON.parse(readFileSync(appConfigFile, "utf8"));
+		assert.match(app.personalization.customPrompt, /# >>> agent-purge:workbuddy/);
+		assert.equal(app.locale, "zh-CN");
+		assert.equal(JSON.parse(readFileSync(settingsFile, "utf8")).sandbox.mode, "workspace", "settings.json 其它设置不动");
+		const restored = uninstallWorkbuddyPrompt(apHome, { harness: "workbuddy" });
+		assert.equal(restored.status, "restored");
+		assert.equal(JSON.parse(readFileSync(appConfigFile, "utf8")).personalization.customPrompt, "cn prompt");
+	} finally {
+		if (previous === undefined) delete process.env.WORKBUDDY_CONFIG_DIR;
+		else process.env.WORKBUDDY_CONFIG_DIR = previous;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("workbuddy-ai: app-config.json 是主路径（5.9.4 实测），settings.json 只作回落", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-wb-ai-app-"));
+	const apHome = join(dir, ".agent-purge");
+	mkdirSync(join(apHome, "personas"), { recursive: true });
+	mkdirSync(join(dir, ".workbuddy-ai", "app"), { recursive: true });
+	const settingsFile = join(dir, ".workbuddy-ai", "settings.json");
+	const appConfigFile = join(dir, ".workbuddy-ai", "app", "app-config.json");
+	// settings.json 保留一个别的 personalization 值（旧版残留），app-config.json 是当前生效的
+	writeFileSync(settingsFile, JSON.stringify({ personalization: { toneStyle: "professional" } }, null, 2) + "\n", "utf8");
+	writeFileSync(appConfigFile, JSON.stringify({ locale: "en-US", personalization: { customPrompt: "app prompt" } }, null, 2) + "\n", "utf8");
+
+	const previous = process.env.WORKBUDDY_AI_CONFIG_DIR;
+	process.env.WORKBUDDY_AI_CONFIG_DIR = join(dir, ".workbuddy-ai");
+	try {
+		assert.equal(workbuddyActiveFile("workbuddy-ai"), appConfigFile, "有 app-config.json 时应以它为准");
+		// 面板里还没设过 personalization 时也一样：主路径存在就写主路径，位置不能漂移
+		writeFileSync(appConfigFile, JSON.stringify({ locale: "en-US" }, null, 2) + "\n", "utf8");
+		assert.equal(workbuddyActiveFile("workbuddy-ai"), appConfigFile, "app-config.json 没有 personalization 也要写它");
+		const installed = installWorkbuddyPrompt(apHome, { personaText: "你叫阿蓝。", mode: "replace", harness: "workbuddy-ai" });
+		assert.equal(installed.status, "installed");
+		assert.equal(installed.file, appConfigFile);
+		const app = JSON.parse(readFileSync(appConfigFile, "utf8"));
+		assert.match(app.personalization.customPrompt, /# >>> agent-purge:workbuddy-ai/);
+		assert.match(app.personalization.customPrompt, /阿蓝/);
+		assert.equal(app.locale, "en-US", "别的键不能被冲掉");
+		assert.equal(JSON.parse(readFileSync(settingsFile, "utf8")).personalization.customPrompt, undefined, "settings.json 不该被写进人设");
+		assert.equal(workbuddyPromptBlocked("workbuddy-ai"), true);
+
+		const restored = uninstallWorkbuddyPrompt(apHome, { harness: "workbuddy-ai" });
+		assert.equal(restored.status, "restored");
+		const appAfter = JSON.parse(readFileSync(appConfigFile, "utf8"));
+		// 这次是从「没有 personalization」开始的：卸载后也只该撤掉我们的键，不能凭空造一个原值
+		assert.equal(appAfter.personalization, undefined, "卸载后不该留下我们写的键");
+		assert.equal(appAfter.locale, "en-US");
+		assert.equal(JSON.parse(readFileSync(settingsFile, "utf8")).personalization.toneStyle, "professional", "settings.json 保持原样");
+		assert.equal(workbuddyPromptBlocked("workbuddy-ai"), false);
+	} finally {
+		if (previous === undefined) delete process.env.WORKBUDDY_AI_CONFIG_DIR;
+		else process.env.WORKBUDDY_AI_CONFIG_DIR = previous;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("workbuddy-ai: 上一版写进 settings.json 的块，重装后从 settings.json 撤走", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-wb-ai-migrate-"));
+	const apHome = join(dir, ".agent-purge");
+	mkdirSync(join(apHome, "personas"), { recursive: true });
+	mkdirSync(join(dir, ".workbuddy-ai", "app"), { recursive: true });
+	const settingsFile = join(dir, ".workbuddy-ai", "settings.json");
+	const appConfigFile = join(dir, ".workbuddy-ai", "app", "app-config.json");
+	const legacy = "# >>> agent-purge:workbuddy-ai\nOLD PERSONA\n# <<< agent-purge:workbuddy-ai";
+	writeFileSync(settingsFile, JSON.stringify({ personalization: { customPrompt: legacy } }, null, 2) + "\n", "utf8");
+	writeFileSync(appConfigFile, JSON.stringify({ locale: "en-US", personalization: { customPrompt: "" } }, null, 2) + "\n", "utf8");
+
+	const previous = process.env.WORKBUDDY_AI_CONFIG_DIR;
+	process.env.WORKBUDDY_AI_CONFIG_DIR = join(dir, ".workbuddy-ai");
+	try {
+		installWorkbuddyPrompt(apHome, { personaText: "新的人设", mode: "replace", harness: "workbuddy-ai" });
+		const settings = JSON.parse(readFileSync(settingsFile, "utf8"));
+		// settings.json 里只有我们那一块：撤走后 personalization 整个消失，不留空壳
+		assert.equal(settings.personalization, undefined, "旧块要从 settings.json 撤走");
+		const app = JSON.parse(readFileSync(appConfigFile, "utf8"));
+		assert.match(app.personalization.customPrompt, /新的人设/);
+	} finally {
+		if (previous === undefined) delete process.env.WORKBUDDY_AI_CONFIG_DIR;
+		else process.env.WORKBUDDY_AI_CONFIG_DIR = previous;
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

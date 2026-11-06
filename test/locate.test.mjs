@@ -126,3 +126,36 @@ test("matchExeName: 通配符只按显式 * 生效，antigravity-tools 不会冒
 	assert.equal(matchExeName("PI-Desktop-Portable-0.21.0.exe", "PI-Desktop-Portable*.exe"), true);
 	assert.equal(matchExeName("antigravity-tools.exe", "Antigravity.exe"), false);
 });
+
+test("locate: .lnk 的 ANSI 路径按系统码页解码（中文目录名不再乱码）", (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-lnk-cjk-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const lnk = join(dir, "WorkBuddy AI.lnk");
+	// `D:\WorkBuddy国际版\WorkBuddyAI\WorkBuddyAI.exe` 里的中文段按 GBK 编码
+	const gbk = Buffer.from([
+		0x44, 0x3a, 0x5c, 0x57, 0x6f, 0x72, 0x6b, 0x42, 0x75, 0x64, 0x64, 0x79, // D:\WorkBuddy
+		0xb9, 0xfa, 0xbc, 0xca, 0xb0, 0xe6, // 国际版（GBK）
+		0x5c, 0x57, 0x6f, 0x72, 0x6b, 0x42, 0x75, 0x64, 0x64, 0x79, 0x41, 0x49, // \WorkBuddyAI
+		0x5c, 0x57, 0x6f, 0x72, 0x6b, 0x42, 0x75, 0x64, 0x64, 0x79, 0x41, 0x49, 0x2e, 0x65, 0x78, 0x65, // \WorkBuddyAI.exe
+	]);
+	const header = Buffer.alloc(0x4c);
+	header.writeUInt32LE(0x4c, 0);
+	header.writeUInt32LE(0x02, 0x14);
+	const info = Buffer.alloc(0x1c);
+	info.writeUInt32LE(0x1c + gbk.length + 1, 0);
+	info.writeUInt32LE(0x1c, 4);
+	info.writeUInt32LE(0x01, 8);
+	info.writeUInt32LE(0x1c, 16);
+	writeFileSync(lnk, Buffer.concat([header, info, gbk, Buffer.from([0])]));
+
+	const parsed = readShortcutTarget(lnk);
+	assert.ok(parsed && parsed.endsWith("WorkBuddyAI.exe"), `应认出 exe：${parsed}`);
+	// 系统 ANSI 码页是中文（936）时，中文段必须解对；其它码页机器不强求
+	const isGbk = /国际版/.test(parsed);
+	const isLatin1 = /¹ú¼Ê°æ/.test(parsed);
+	if (isGbk) assert.ok(!isLatin1, "同时出现两种解码说明实现有问题");
+	else if (process.platform === "win32") {
+		// 非 936 码页：允许解不出来，但绝不能是 latin1 乱码路径（那就是老 bug）
+		assert.ok(!isLatin1, `latin1 乱码路径：${parsed}`);
+	}
+});

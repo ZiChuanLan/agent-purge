@@ -130,7 +130,7 @@ agent-purge status
 | Codex / Claude Code | 0.166.0 / 2.1.316 | 起動エントリ検証済み；ホットスイッチ未検証 |
 | CodeBuddy / Grok | 2.179.0 / 1.0.73 | 起動エントリ検証済み；ホットスイッチ未検証 |
 | Kilo Code | @kilocode/cli 7.8.18 | 全4モード実リクエストキャプチャ完了；system 層でマーカー確認 |
-| WorkBuddy | 5.9.3 | 二重チャネル身元設定（`IDENTITY.md`, `SOUL.md`, `USER.md` および `customPrompt`）検証済み；ホットスイッチ未検証 |
+| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 身元設定（`IDENTITY.md`, `SOUL.md`, `USER.md` および `customPrompt`、国際版は `app/app-config.json` に保存）検証済み；ホットスイッチ未検証 |
 
 詳細な互換性情報および制限事項は [docs/compatibility.md](docs/compatibility.md) をご参照ください。
 
