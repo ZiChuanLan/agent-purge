@@ -177,7 +177,8 @@ await t("只有 web profile（没有 desktop）时 slashStatus 不 ENOENT", () =
 	dsh.addPlugin(dsh.SLASH_RESIDENT, "export default {};");
 	const row = slashStatus(DATA).find((s) => s.id === "dsh");
 	assert.equal(row?.installed, true);
-	assert.ok(row.file.startsWith(webProfile), row.file);
+	// 插件包落在数据目录（issue #11）：不再依赖某个 profile 的 node_modules
+	assert.ok(row.file.startsWith(join(DATA, "dsh")), row.file);
 	dsh.removePlugin(dsh.SLASH_RESIDENT);
 	assert.equal(slashStatus(DATA).find((s) => s.id === "dsh")?.installed, false);
 });

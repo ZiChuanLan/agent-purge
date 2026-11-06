@@ -25,6 +25,7 @@
 - Claude 的 strict 仍含固定身份句；Codex 和 OMP 仍有额外运行说明。`strict` 仅替换可控入口。
 - DSH 的 replace 曾漏掉包含 `{{model}}` 的身份模板行，工作区已补回归；身份行匹配仍不是完整语义识别。
 - DSH 三形态已于 2026-11-02 补测（`0.2.1-rc.5`，本地 loopback provider）：headless 用 CLI，web 用 `dsh web`，desktop 用 `DeepSeek Harness.exe`；三形态各 `off / strict / replace / append` 四模式，共 12 次主请求均在 system 层捕获，marker 命中 1（off 为 0），user 层 0。见 `out/capture/dsh-surfaces-2026-11-01T18-05-22-727Z/report.json`。desktop 的 strict 仍含宿主注入的约 11.4K `billion-context` 系统提醒，因此 strict 不是纯人设。
+- DSH 0.2.2-rc.1（2026-11-06 本机验证）：0.2.2 把 profile 依赖交给 pnpm 的运行时解析表，插件不能继续手写进 `<profile>/node_modules`——目录一旦被清理就报 `Cannot find package '<name>' imported from .../profiles/web/`（issue #11）。插件包改放数据目录，patch 用绝对 `file:` URL 引用；`0.2.1-rc.5` 与 `0.2.2-rc.1` 均实测能加载，profile 名在运行时取宿主 `profileContext`（旧布局的路径推导保留为兜底）。四模式抓包结论未因此变化。
 - Hermes、zcode、antigravity 未找到入口，不计成功。
 - WorkBuddy 5.9.3 于 2026-11-02 用本机桌面会话验证 `settings.json → personalization.customPrompt`：写入测试人设后模型回答切换成功；这是身份上下文追加，不是完整 system 替换，云端请求体不可见，因此不列入上表。
 - WorkBuddy 设置里的“名字”“人设设定”是它自己的云端个人配置，不是 `customPrompt`；关闭 agent-purge 不会清掉这两项，也不应越权改写。

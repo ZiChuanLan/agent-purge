@@ -50,16 +50,18 @@ const yml = (p) => join(dir, ".dsh", "profiles", p, "cordis.patch.yml");
 
 try {
 	console.log("\ndsh 常驻");
-	await t("install 覆盖已有 desktop/web/headless/sdk profile", () => {
+	await t("install 只写一份插件包，但每个已有 profile 都挂 patch 段", () => {
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
+		assert.ok(existsSync(join(DATA, "dsh", RESIDENT, "index.js")), "数据目录缺 index.js");
 		for (const p of DSH_PROFILES) {
-			assert.ok(existsSync(join(dir, ".dsh", "profiles", p, "node_modules", RESIDENT, "index.js")), `${p} 缺 index.js`);
+			assert.match(readFileSync(yml(p), "utf8"), new RegExp(`# >>> ${RESIDENT}`), `${p} 的 patch 没挂上`);
+			assert.ok(!existsSync(join(dir, ".dsh", "profiles", p, "node_modules", RESIDENT)), `${p} 不该再往 node_modules 里写`);
 		}
 	});
 	await t("patch 里挂了一次 insert 段", () => {
 		const text = readFileSync(yml("desktop"), "utf8");
 		assert.equal(text.split(`# >>> ${RESIDENT}`).length - 1, 1);
-		assert.match(text, /- insert:\n    - id: agent-purge\n      name: agent-purge/);
+		assert.match(text, /- insert:\n    - id: agent-purge\n      name: 'file:\/\/\/.*agent-purge\/index\.js'/);
 	});
 	await t("重复 install 幂等（不会写两段）", () => {
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
@@ -67,7 +69,7 @@ try {
 		assert.equal(text.split(`# >>> ${RESIDENT}`).length - 1, 1);
 	});
 	await t("插件读的是 personas/active.md（换 persona 才能热切）", () => {
-		const src = readFileSync(join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT, "index.js"), "utf8");
+		const src = readFileSync(join(DATA, "dsh", RESIDENT, "index.js"), "utf8");
 		assert.match(src, /personas[\/\\]active\.md/);
 		assert.doesNotMatch(src, /\.build[\/\\]alpha\.md/);
 	});
@@ -81,9 +83,10 @@ try {
 			assert.equal(readFileSync(yml("desktop"), "utf8"), before, `还原失败：${JSON.stringify(before)}`);
 		}
 	});
-	await t("uninstall 清掉全部已知 profile 的插件目录", () => {
+	await t("uninstall 清掉数据目录的插件包和所有 profile 里的旧副本", () => {
+		assert.ok(!existsSync(join(DATA, "dsh", RESIDENT)), "数据目录还留着");
 		for (const p of DSH_PROFILES) {
-			assert.ok(!existsSync(join(dir, ".dsh", "profiles", p, "node_modules", RESIDENT)), `${p} 还留着`);
+			assert.ok(!existsSync(join(dir, ".dsh", "profiles", p, "node_modules", RESIDENT)), `${p} 还留着旧副本`);
 		}
 	});
 	await t("status 报未安装", () => {
@@ -136,7 +139,7 @@ try {
 		store.setActive("beta");
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
 		writeState({ dsh: ["install"] }, "replace");
-		const plugin = await loadPlugin(join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT, "index.js"), "armed");
+		const plugin = await loadPlugin(join(DATA, "dsh", RESIDENT, "index.js"), "armed");
 		const ctx = { systemPrompt: { assemble: async () => ({ sections: [{ name: "host", text: "HOST" }] }) } };
 		plugin.apply(ctx);
 		const asm = await ctx.systemPrompt.assemble();
@@ -147,7 +150,7 @@ try {
 	});
 	await t("armed 被清掉后同一插件停止注入（磁盘卸载后的残存回调）", async () => {
 		writeState({}, "replace");
-		const plugin = await loadPlugin(join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT, "index.js"), "disarmed");
+		const plugin = await loadPlugin(join(DATA, "dsh", RESIDENT, "index.js"), "disarmed");
 		const ctx = { systemPrompt: { assemble: async () => ({ sections: [{ name: "host", text: "HOST" }] }) } };
 		plugin.apply(ctx);
 		const asm = await ctx.systemPrompt.assemble();
@@ -155,7 +158,7 @@ try {
 	});
 	await t("mode off 时即使 armed 也放过宿主结果", async () => {
 		writeState({ dsh: ["install"] }, "off");
-		const plugin = await loadPlugin(join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT, "index.js"), "offmode");
+		const plugin = await loadPlugin(join(DATA, "dsh", RESIDENT, "index.js"), "offmode");
 		const ctx = { systemPrompt: { assemble: async () => ({ sections: [{ name: "host", text: "HOST" }] }) } };
 		plugin.apply(ctx);
 		assert.equal((await ctx.systemPrompt.assemble()).sections[0].text, "HOST");
@@ -165,7 +168,7 @@ try {
 	await t("宿主 assemble 同步：开启时同步注入，关闭时同步原样返回", async () => {
 		store.setActive("beta");
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
-		const desktop = join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT, "index.js");
+		const desktop = join(DATA, "dsh", RESIDENT, "index.js");
 		const hostAsm = { sections: [{ name: "host", text: "HOST" }] };
 		const mk = () => ({ systemPrompt: { assemble: () => hostAsm } });
 		writeState({ dsh: ["install"] }, "replace");
@@ -189,20 +192,24 @@ try {
 	await t("dshProfiles 只让勾中的形态注入", async () => {
 		store.setActive("beta");
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
-		const mk = () => ({ systemPrompt: { assemble: async () => ({ sections: [{ name: "host", text: "HOST" }] }) } });
-		const file = (p) => join(dir, ".dsh", "profiles", p, "node_modules", RESIDENT, "index.js");
+		// 插件包只有一份（数据目录），profile 靠宿主 profileContext 报给插件
+		const mk = (profile) => ({
+			get: (key) => (key === "profileContext" ? { name: profile } : undefined),
+			systemPrompt: { assemble: async () => ({ sections: [{ name: "host", text: "HOST" }] }) },
+		});
+		const file = join(DATA, "dsh", RESIDENT, "index.js");
 		writeFileSync(
 			stateFile,
 			JSON.stringify({ v: 1, persona: "beta", default: { harness: "dsh", mode: "replace" }, armed: { dsh: ["install"] }, dshProfiles: ["web"] }),
 		);
 
-		let plugin = await loadPlugin(file("desktop"), "prof-desktop-off");
-		let ctx = mk();
+		let plugin = await loadPlugin(file, "prof-desktop-off");
+		let ctx = mk("desktop");
 		plugin.apply(ctx);
 		assert.equal((await ctx.systemPrompt.assemble()).sections[0].text, "HOST", "desktop 没勾却注入了");
 
-		plugin = await loadPlugin(file("web"), "prof-web-on");
-		ctx = mk();
+		plugin = await loadPlugin(file, "prof-web-on");
+		ctx = mk("web");
 		plugin.apply(ctx);
 		assert.match((await ctx.systemPrompt.assemble()).sections[0].text, /正文 B/, "web 勾了却没注入");
 	});
@@ -226,22 +233,23 @@ try {
 		hook(ev);
 		assert.equal(ev.system[0].text, "HOST", "未武装却仍改 system");
 	});
-	await t("同名但非我们装的目录拒绝覆盖", () => {
+	await t("同名但非我们装的目录拒绝覆盖（数据目录里的同名插件）", () => {
 		const dir2 = mkdtempSync(join(tmpdir(), "ap-foreign-"));
+		const home2 = join(dir2, ".agent-purge");
+		const savedProfile = process.env.DSH_HOME;
+		const savedHome = process.env.AGENT_PURGE_HOME;
 		try {
 			mkdirSync(join(dir2, ".dsh", "profiles", "desktop"), { recursive: true });
 			writeFileSync(join(dir2, ".dsh", "profiles", "desktop", "package.json"), '{"name":"dsh-profile-desktop"}');
-			mkdirSync(join(dir2, ".dsh", "profiles", "desktop", "node_modules", RESIDENT), { recursive: true });
-			writeFileSync(join(dir2, ".dsh", "profiles", "desktop", "node_modules", RESIDENT, "package.json"), '{"name":"someone-else"}');
-			const savedProfile = process.env.DSH_HOME;
+			mkdirSync(join(home2, "dsh", RESIDENT), { recursive: true });
+			writeFileSync(join(home2, "dsh", RESIDENT, "package.json"), '{"name":"someone-else"}');
 			process.env.DSH_HOME = join(dir2, ".dsh");
-			try {
-				const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
-				assert.match(r.error ?? "", /拒绝覆盖/, "应返回 {error} 而不是抛：Web/CLI 都没接异常");
-			} finally {
-				process.env.DSH_HOME = savedProfile;
-			}
+			process.env.AGENT_PURGE_HOME = home2;
+			const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
+			assert.match(r.error ?? "", /拒绝覆盖/, "应返回 {error} 而不是抛：Web/CLI 都没接异常");
 		} finally {
+			process.env.DSH_HOME = savedProfile;
+			process.env.AGENT_PURGE_HOME = savedHome;
 			rmSync(dir2, { recursive: true, force: true });
 		}
 	});
@@ -255,7 +263,9 @@ try {
 			process.env.DSH_HOME = join(dir4, ".dsh");
 			const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
 			assert.equal(r.error ?? "", "");
-			assert.ok(existsSync(join(dir4, ".dsh", "profiles", "desktop", "node_modules", RESIDENT, "index.js")), "desktop 应该装上");
+			// 插件包在数据目录（与 profile 无关），patch 才按活着的 profile 挂
+			assert.ok(existsSync(join(DATA, "dsh", RESIDENT, "index.js")), "插件包应该写到数据目录");
+			assert.match(readFileSync(join(dir4, ".dsh", "profiles", "desktop", "cordis.patch.yml"), "utf8"), /agent-purge:agent-purge/, "desktop 的 patch 应该挂上");
 			assert.ok(!existsSync(join(dir4, ".dsh", "profiles", "web")), "不该凭空造 web profile（dsh 才该造）");
 			assert.ok(!existsSync(join(dir4, ".dsh", "profiles", "headless")), "不该凭空造 headless profile");
 		} finally {
@@ -273,67 +283,76 @@ try {
 	});
 	await t("中途失败回滚，不留半套", () => {
 		const savedProfile = process.env.DSH_HOME;
+		const savedHome = process.env.AGENT_PURGE_HOME;
 		const dir3 = mkdtempSync(join(tmpdir(), "ap-rollback-"));
+		const home3 = join(dir3, ".agent-purge");
 		try {
-			// desktop 先写成功；web 的 node_modules 位置上放同名文件，mkdir 必失败
+			// desktop 先写成功；web 的 patch 位置上放一个目录，writeFileSync 必失败
 			const webProfile = join(dir3, ".dsh", "profiles", "web");
 			mkdirSync(webProfile, { recursive: true });
 			writeFileSync(join(webProfile, "package.json"), '{"name":"dsh-profile-web"}');
 			mkdirSync(join(dir3, ".dsh", "profiles", "desktop"), { recursive: true });
 			writeFileSync(join(dir3, ".dsh", "profiles", "desktop", "package.json"), '{"name":"dsh-profile-desktop"}');
-			writeFileSync(join(webProfile, "node_modules"), "not a dir");
+			mkdirSync(join(webProfile, "cordis.patch.yml"), { recursive: true });
 			process.env.DSH_HOME = join(dir3, ".dsh");
-			const deskDir = join(dir3, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
+			process.env.AGENT_PURGE_HOME = home3;
+			const deskPlugin = join(home3, "dsh", RESIDENT);
 			const deskYml = join(dir3, ".dsh", "profiles", "desktop", "cordis.patch.yml");
 			const deskStash = join(dir3, ".dsh", "profiles", "desktop", ".agent-purge.patch.before");
 			writeFileSync(deskYml, "[]\n");
 			const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
 			assert.ok(r.error, "应该以 {error} 报错");
-			assert.equal(existsSync(deskDir), false, "失败后 desktop 插件目录残留");
+			assert.equal(existsSync(deskPlugin), false, "失败后插件目录残留");
 			assert.equal(readFileSync(deskYml, "utf8"), "[]\n", "失败后 desktop patch 没回原样");
 			assert.equal(existsSync(deskStash), false, "失败后 stash 残留（回滚没盖住 stash）");
 		} finally {
 			process.env.DSH_HOME = savedProfile;
+			process.env.AGENT_PURGE_HOME = savedHome;
 			rmSync(dir3, { recursive: true, force: true });
 		}
 	});
-	await t("回滚：原本没有 patch 文件就删掉，且不碰既有插件目录", () => {
+	await t("回滚：原本没有 patch 文件就删掉，新写的插件也一起撤回", () => {
 		const savedProfile = process.env.DSH_HOME;
+		const savedHome = process.env.AGENT_PURGE_HOME;
 		const dir5 = mkdtempSync(join(tmpdir(), "ap-rollback2-"));
+		const home5 = join(dir5, ".agent-purge");
 		try {
 			const webProfile = join(dir5, ".dsh", "profiles", "web");
 			mkdirSync(webProfile, { recursive: true });
 			writeFileSync(join(webProfile, "package.json"), '{"name":"dsh-profile-web"}');
 			mkdirSync(join(dir5, ".dsh", "profiles", "desktop"), { recursive: true });
 			writeFileSync(join(dir5, ".dsh", "profiles", "desktop", "package.json"), '{"name":"dsh-profile-desktop"}');
-			writeFileSync(join(webProfile, "node_modules"), "not a dir");
+			mkdirSync(join(webProfile, "cordis.patch.yml"), { recursive: true });
 			process.env.DSH_HOME = join(dir5, ".dsh");
-			const deskDir = join(dir5, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
+			process.env.AGENT_PURGE_HOME = home5;
 			const deskYml = join(dir5, ".dsh", "profiles", "desktop", "cordis.patch.yml");
 			const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
 			assert.ok(r.error, "应该以 {error} 报错");
-			assert.equal(existsSync(deskDir), false, "失败后 desktop 插件目录残留");
+			assert.equal(existsSync(join(home5, "dsh", RESIDENT)), false, "失败后插件目录残留");
 			assert.equal(existsSync(deskYml), false, "原本没这个 patch，回滚后却留下了");
 		} finally {
 			process.env.DSH_HOME = savedProfile;
+			process.env.AGENT_PURGE_HOME = savedHome;
 			rmSync(dir5, { recursive: true, force: true });
 		}
 	});
-	await t("重装失败：已经装好的 profile 不能被回滚删掉（否则 patch 指向不存在的包）", () => {
+	await t("重装失败：已经装好的插件不能被回滚删掉（否则 patch 指向不存在的文件）", () => {
 		persist.uninstall("dsh");
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
-		const deskDir = join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
-		assert.equal(existsSync(deskDir), true, "前置：先得装好一份");
+		const pluginDirNow = join(DATA, "dsh", RESIDENT);
+		const pluginSrc = readFileSync(join(pluginDirNow, "index.js"), "utf8");
+		assert.equal(existsSync(pluginDirNow), true, "前置：先得装好一份");
 		const webProfile = join(dir, ".dsh", "profiles", "web");
 		mkdirSync(webProfile, { recursive: true });
 		writeFileSync(join(webProfile, "package.json"), '{"name":"dsh-profile-web"}');
-		rmSync(join(webProfile, "node_modules"), { recursive: true, force: true });
-		writeFileSync(join(webProfile, "node_modules"), "not a dir");
+		rmSync(join(webProfile, "cordis.patch.yml"), { recursive: true, force: true });
+		mkdirSync(join(webProfile, "cordis.patch.yml"), { recursive: true });
 		const r = persist.install("dsh", { root: DATA, active: store.refreshActive() });
 		assert.ok(r.error, "应该以 {error} 报错");
-		assert.equal(existsSync(deskDir), true, "回滚把之前就装好的 desktop 目录删了");
+		assert.equal(existsSync(pluginDirNow), true, "回滚把之前就装好的插件删了");
+		assert.equal(readFileSync(join(pluginDirNow, "index.js"), "utf8"), pluginSrc, "回滚把之前就装好的插件改坏了");
 		persist.uninstall("dsh");
-		rmSync(join(webProfile, "node_modules"), { force: true });
+		rmSync(join(webProfile, "cordis.patch.yml"), { recursive: true, force: true });
 	});
 	await t("空文件 / `[]` / 不存在：卸载后字节还原", () => {		for (const content of [null, "", "[]\n"]) {
 			persist.uninstall("dsh");
@@ -349,7 +368,7 @@ try {
 	await t("uninstall 顺带清一次性插件残留", () => {
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
 		// 模拟被 SIGKILL 的一次性插件：cleanup 没跑成
-		const sess = join(dir, ".dsh", "profiles", "desktop", "node_modules", "agent-purge-session");
+		const sess = join(DATA, "dsh", "agent-purge-session");
 		mkdirSync(sess, { recursive: true });
 		writeFileSync(join(sess, "package.json"), JSON.stringify({ name: "agent-purge-session", agentPurge: true }));
 		writeFileSync(join(sess, "index.js"), "export default {};");
@@ -358,7 +377,7 @@ try {
 	});
 	await t("卸载保留用户修改或新增的 DSH 插件文件；重装不覆盖外部编辑", () => {
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
-		const plugin = join(dir, ".dsh", "profiles", "desktop", "node_modules", RESIDENT);
+		const plugin = join(DATA, "dsh", RESIDENT);
 		const edited = readFileSync(join(plugin, "index.js"), "utf8") + "\n// user change\n";
 		writeFileSync(join(plugin, "index.js"), edited);
 		writeFileSync(join(plugin, "notes.txt"), "PRIVATE NOTES");
@@ -385,7 +404,7 @@ try {
 		store.setActive("beta");
 		persist.install("dsh", { root: DATA, active: store.refreshActive() });
 		persist.install("opencode2", { root: DATA, active: store.refreshActive() });
-		assert.ok(existsSync(join(dir, ".dsh", "profiles", "web", "node_modules", RESIDENT, "index.js")));
+		assert.ok(existsSync(join(DATA, "dsh", RESIDENT, "index.js")));
 		assert.ok(existsSync(v2file()));
 		persist.uninstall("dsh");
 		assert.ok(existsSync(v2file()), "卸 dsh 不该动 opencode2");

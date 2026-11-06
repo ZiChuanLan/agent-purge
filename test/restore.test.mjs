@@ -96,7 +96,7 @@ test('oneshot opencode setup/cleanup are idempotent and preserve prior file', ()
 test('dsh temporary plugin restores prior package and patch; cleanup before setup is harmless', () => {
  const profile = dsh.profileDir('headless'); mkdirSync(profile, { recursive:true }); writeFileSync(join(profile,'package.json'), '{}'); writeFileSync(join(profile,'cordis.patch.yml'), '[]\n');
  dsh.addPlugin(dsh.SESSION, 'OLD SOURCE');
- const source = join(dsh.pluginDir('headless', dsh.SESSION), 'index.js');
+ const source = dsh.pluginFile(dsh.SESSION);
  const before = readFileSync(join(profile,'cordis.patch.yml'), 'utf8');
  const b = backends.dsh({ personaText:'test', mode:'append', args:[] }); b.cleanup(); assert.equal(readFileSync(source,'utf8'), 'OLD SOURCE');
  b.setup(); b.setup(); assert.notEqual(readFileSync(source,'utf8'), 'OLD SOURCE'); b.cleanup(); b.cleanup();

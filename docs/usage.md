@@ -95,7 +95,7 @@ agent-purge status
 
 `arm <h>` 尝试开启该执行器的常驻、命令和 slash 通道，结果逐项报告；不是每个执行器都支持全部通道。首次安装或更新插件代码后需重新加载宿主。Linux/macOS 的 shim 目录需要按命令提示加入 shell 的 PATH。
 
-DSH 只写入它已初始化的 profile，不凭空创建 desktop/web/headless 配置。其 slash 插件只是开关，注入还需要常驻插件；实际处理的 profile 会在命令结果中列出。
+DSH 只写入它已初始化的 profile，不凭空创建 desktop/web/headless 配置。其 slash 插件只是开关，注入还需要常驻插件；实际处理的 profile 会在命令结果中列出。插件包放在 agent-purge 数据目录（`~/.agent-purge/dsh/<插件名>/`），patch 用绝对 `file:` URL 引用它，不依赖 profile 的 `node_modules`，因此 dsh 重装依赖或清理 profile 都不会让插件失效。
 
 ### 项目规则
 

@@ -77,7 +77,7 @@ test('resident opencode v1/v2: actual generated callbacks follow active file, di
 });
 test('dsh same callback: A→B→off, sync result preserved; slash mode scoped to profile',async()=>{
  const {install}=await import('../lib/persist.mjs');state('append');install('dsh',{root,active:join(root,'personas','active.md')});
- const file=join(root,'profiles','headless','node_modules','agent-purge','index.js');const plugin=(await import(pathToFileURL(file))).default;
+ const file=join(root,'dsh','agent-purge','index.js');const plugin=(await import(pathToFileURL(file))).default;
  let asm={sections:[{name:'host',text:'HOST',cache_control:{type:'ephemeral'}}]};const original=structuredClone(asm);const ctx={systemPrompt:{assemble:()=>asm}};plugin.apply(ctx);
  asm=ctx.systemPrompt.assemble();state('append','b');asm=ctx.systemPrompt.assemble();assert.doesNotMatch(JSON.stringify(asm),/VERSION A/);
  state('strict','b');asm=ctx.systemPrompt.assemble();state('off','b');asm=ctx.systemPrompt.assemble();assert.deepEqual(asm,original);
@@ -87,10 +87,10 @@ test('dsh slash mode: defaults to purge off until explicitly turned on via /purg
  // 同时武装 install 和 slash，未执行 /purge on（dshRuntime 为空或 enabled 为 false）
  state('append','a',{armed:{dsh:['install','slash']},dshRuntime:{headless:{enabled:false}}});
  install('dsh',{root,active:join(root,'personas','active.md')});
- const file=join(root,'profiles','headless','node_modules','agent-purge','index.js');
+ const file=join(root,'dsh','agent-purge','index.js');
  const plugin=(await import(pathToFileURL(file).href+'?slash-default-off')).default;
  const original={sections:[{name:'host',text:'HOST'}]};
- const ctx={systemPrompt:{assemble:()=>structuredClone(original)}};
+ const ctx={get:(k)=>k==='profileContext'?{name:'headless'}:undefined,systemPrompt:{assemble:()=>structuredClone(original)}};
  plugin.apply(ctx);
  // 默认处于 purge off 状态：不修改系统提示词
  let asm=ctx.systemPrompt.assemble();
@@ -136,7 +136,7 @@ test('overrides: runtime reads the per-harness persona/mode, global stays as fal
  // dsh：三个 profile 共用一份插件，统一按 "dsh" 查例外
  state('append','a',{overrides:{dsh:{persona:'b'}}});
  install('dsh',{root,active:join(root,'personas','active.md')});
- const dshPlugin=(await import(pathToFileURL(join(root,'profiles','headless','node_modules','agent-purge','index.js')).href+'?overrides')).default;
+ const dshPlugin=(await import(pathToFileURL(join(root,'dsh','agent-purge','index.js')).href+'?overrides')).default;
  const ctx2={systemPrompt:{assemble:()=>({sections:[{name:'host',text:'HOST'}]})}};dshPlugin.apply(ctx2);
  const asm=ctx2.systemPrompt.assemble();
  assert.match(JSON.stringify(asm),/VERSION B/);assert.doesNotMatch(JSON.stringify(asm),/VERSION A/);
@@ -157,7 +157,7 @@ test('dsh deep purge: auto approval, noise stripping, strict complete and contex
  const { install } = await import('../lib/persist.mjs');
  state('strict', 'b');
  install('dsh', { root, active: join(root, 'personas', 'active.md') });
- const file = join(root, 'profiles', 'headless', 'node_modules', 'agent-purge', 'index.js');
+ const file = join(root, 'dsh', 'agent-purge', 'index.js');
  const plugin = (await import(pathToFileURL(file).href + '?deep-purge-test')).default;
  const hooks = {};
  let asm = {
