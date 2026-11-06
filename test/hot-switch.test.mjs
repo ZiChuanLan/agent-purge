@@ -207,3 +207,54 @@ test('dsh deep purge: auto approval, noise stripping, strict complete and contex
  assert.equal(approvalOff, 'delegated');
 });
 
+test('dsh slash command plugin: applies without ReferenceError, registers /purge & /ap, updates per-profile state (issue #12)', async () => {
+ const { slashSource } = await import('../lib/dsh.mjs');
+ state('append', 'a', { armed: { dsh: ['install', 'slash'] }, dshRuntime: {} });
+ const plugin = (await fromSource(slashSource(root))).default;
+ assert.equal(plugin.name, 'agent-purge-slash');
+
+ const registered = {};
+ const mockCtx = {
+  get: (k) => k === 'profileContext' ? { name: 'web' } : undefined,
+  inject: (deps, callback) => {
+   callback({
+    commands: {
+     register: (spec) => { registered[spec.name] = spec; }
+    }
+   });
+  }
+ };
+
+ // issue #12: apply 不能报 ReferenceError: hostProfile is not defined 或 Assignment to constant variable
+ plugin.apply(mockCtx);
+ assert.ok(registered['purge']);
+ assert.ok(registered['ap']);
+
+ // 执行 /purge on，写入当前 profile (web)
+ const resOn = registered['purge'].handler({ rawInput: 'on' });
+ assert.equal(resOn.kind, 'success');
+ let st = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'));
+ assert.equal(st.dshRuntime?.web?.enabled, true);
+
+ // 执行 /purge mode strict
+ const resMode = registered['purge'].handler({ rawInput: 'mode strict' });
+ assert.equal(resMode.kind, 'success');
+ st = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'));
+ assert.equal(st.dshRuntime?.web?.mode, 'strict');
+
+ // 执行 /purge status
+ const resStatus = registered['purge'].handler({ rawInput: 'status' });
+ assert.equal(resStatus.kind, 'success');
+ assert.match(resStatus.text, /模式 strict/);
+
+ // 执行 /purge off
+ const resOff = registered['purge'].handler({ rawInput: 'off' });
+ assert.equal(resOff.kind, 'success');
+ st = JSON.parse(readFileSync(join(root, 'state.json'), 'utf8'));
+ assert.equal(st.dshRuntime?.web?.enabled, false);
+
+ // 不传 profileContext 也能安全回落，不报错
+ const fallbackCtx = { inject: () => {} };
+ plugin.apply(fallbackCtx);
+});
+
