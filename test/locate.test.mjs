@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { locate, readShortcutTarget, scanDrives } from "../lib/locate.mjs";
 
 /** 造一个最小的 .lnk：只有 Header + LinkInfo(LocalBasePath)，够验解析器 */
@@ -150,12 +151,24 @@ test("locate: .lnk 的 ANSI 路径按系统码页解码（中文目录名不再�
 
 	const parsed = readShortcutTarget(lnk);
 	assert.ok(parsed && parsed.endsWith("WorkBuddyAI.exe"), `应认出 exe：${parsed}`);
-	// 系统 ANSI 码页是中文（936）时，中文段必须解对；其它码页机器不强求
-	const isGbk = /国际版/.test(parsed);
-	const isLatin1 = /¹ú¼Ê°æ/.test(parsed);
-	if (isGbk) assert.ok(!isLatin1, "同时出现两种解码说明实现有问题");
-	else if (process.platform === "win32") {
-		// 非 936 码页：允许解不出来，但绝不能是 latin1 乱码路径（那就是老 bug）
-		assert.ok(!isLatin1, `latin1 乱码路径：${parsed}`);
+	// 解码结果取决于本机 ANSI 码页：中文机（936）必须解出中文；CI 常见的 1252 机器上，
+	// GBK 字节本来就不会出现在真实 .lnk 里，此时退回 latin1 是可接受的，不能断言成 bug。
+	if (process.platform === "win32" && ansiCodePage() === "936") {
+		assert.match(parsed, /WorkBuddy国际版/, `936 机器上必须解对：${parsed}`);
 	}
+	// 非 936 码页：不解出中文是预期行为，这里不做断言
 });
+
+/** 本机 ANSI 码页；取不到返回空串（调用方按「不强制」处理） */
+function ansiCodePage() {
+	if (process.platform !== "win32") return "";
+	try {
+		const out = execFileSync("reg", ["query", String.raw`HKLM\SYSTEM\CurrentControlSet\Control\Nls\CodePage`, "/v", "ACP"], {
+			encoding: "utf8",
+			windowsHide: true,
+		});
+		return out.match(/ACP\s+REG_SZ\s+([0-9]+)/)?.[1] ?? "";
+	} catch {
+		return "";
+	}
+}
