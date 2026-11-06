@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 let pass = 0;
 const fails = [];
@@ -42,7 +43,7 @@ writeFileSync(join(DATA, "personas", "beta.md"), "---\nid: beta\nname: Beta\n---
 
 const { createStore } = await import("../lib/personas.mjs");
 const persist = await import("../lib/persist.mjs");
-const { DSH_PROFILES, RESIDENT } = await import("../lib/dsh.mjs");
+const { DSH_PROFILES, RESIDENT, pluginSpecifier } = await import("../lib/dsh.mjs");
 
 const store = createStore(DATA);
 store.setActive("alpha");
@@ -409,6 +410,47 @@ try {
 		persist.uninstall("dsh");
 		assert.ok(existsSync(v2file()), "卸 dsh 不该动 opencode2");
 		persist.uninstall("opencode2");
+	});
+	await t("路径带单引号/空格/中文：patch 仍是合法 YAML 且能还原", () => {
+		const savedProfile = process.env.DSH_HOME;
+		const savedHome = process.env.AGENT_PURGE_HOME;
+		const weird = join(mkdtempSync(join(tmpdir(), "ap-quote-")), "a b 'c' 中文");
+		const home6 = join(weird, "data");
+		const dsh6 = join(weird, "dsh");
+		try {
+			mkdirSync(join(dsh6, "profiles", "web"), { recursive: true });
+			writeFileSync(join(dsh6, "profiles", "web", "package.json"), '{"name":"dsh-profile-web"}');
+			process.env.DSH_HOME = dsh6;
+			process.env.AGENT_PURGE_HOME = home6;
+			persist.install("dsh", { root: DATA, active: store.refreshActive() });
+			const patch = join(dsh6, "profiles", "web", "cordis.patch.yml");
+			const line = readFileSync(patch, "utf8").split("\n").find((l) => l.includes("      name: "));
+			// YAML 单引号标量里 `'` 必须双写成 `''`，否则整份 patch 解析失败
+			assert.match(line, /^      name: '.*''.*'$/, line);
+			const scalar = line.trim().replace(/^name: /, "");
+			assert.equal(scalar.slice(1, -1).replace(/''/g, "'"), pluginSpecifier(RESIDENT));
+			persist.uninstall("dsh");
+			assert.equal(existsSync(patch), false, "原本没有 patch，卸载后该删掉");
+		} finally {
+			process.env.DSH_HOME = savedProfile;
+			process.env.AGENT_PURGE_HOME = savedHome;
+			rmSync(weird, { recursive: true, force: true });
+		}
+	});
+	await t("迁移旧布局后不留空 node_modules", () => {
+		const profile = join(dir, ".dsh", "profiles", "desktop");
+		const legacy = join(profile, "node_modules", RESIDENT);
+		mkdirSync(legacy, { recursive: true });
+		writeFileSync(join(legacy, "package.json"), JSON.stringify({ name: RESIDENT, agentPurge: true }));
+		writeFileSync(join(legacy, "index.js"), "export default {};");
+		const pkg = readFileSync(join(legacy, "package.json"));
+		const src = readFileSync(join(legacy, "index.js"));
+		const h = (b) => createHash("sha256").update(b).digest("hex");
+		writeFileSync(join(legacy, ".agent-purge.files.json"), JSON.stringify({ "package.json": h(pkg), "index.js": h(src) }));
+		persist.install("dsh", { root: DATA, active: store.refreshActive() });
+		assert.equal(existsSync(legacy), false, "旧副本没清");
+		assert.equal(existsSync(join(profile, "node_modules")), false, "留下空 node_modules");
+		persist.uninstall("dsh");
 	});
 } finally {
 	for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
