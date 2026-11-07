@@ -289,6 +289,53 @@ await t("0.2.8 装坏的 patch（`[]` + 块）：再装一次就把 `[]` 摊平�
 	dsh.removePlugin(dsh.RESIDENT);
 	assert.equal(readFileSync(dshPatch, "utf8"), "# 头部\n[]\n");
 });
+await t("存量 0.2.19 现场（裸包名块 + node_modules 副本）：问一次状态就自愈成 file: URL", () => {
+	// 0.2.19 的 addPlugin 把裸包名写进 patch，插件包落在 profile 的 node_modules，且没有指纹清单
+	const legacyDir = join(webProfile, "node_modules", dsh.RESIDENT);
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(legacyDir, "package.json"), JSON.stringify({ name: dsh.RESIDENT, version: "0.0.0", type: "module", main: "index.js", agentPurge: true }));
+	writeFileSync(join(legacyDir, "index.js"), "export default {};");
+	// 用户升级后跑过一次 install（数据目录已有包），但没重装，盘上 patch 还是旧形态
+	dsh.addPlugin(dsh.RESIDENT, "export default {};");
+	const legacyPatch = "# 头部\n[]\n\n# >>> agent-purge:agent-purge\n- insert:\n    - id: agent-purge\n      name: agent-purge\n# <<< agent-purge:agent-purge\n";
+	writeFileSync(dshPatch, legacyPatch);
+	assert.equal(existsSync(legacyDir), true, "副本应当还在（无指纹时 addPlugin 不硬删）");
+
+	// 关键：只问状态，不显式 install
+	assert.equal(dsh.hasPluginAny(dsh.RESIDENT), true);
+	const text = readFileSync(dshPatch, "utf8");
+	assert.match(text, /name: 'file:\/\//, text);
+	assert.doesNotMatch(text, /^[ \t]*\[[ \t]*\][ \t]*$/m, text);
+	assert.match(text, /# 头部/, "自愈把用户块外的注释弄丢了");
+	assert.equal(existsSync(legacyDir), false, "旧 node_modules 副本没被收走");
+
+	// 幂等：再问一次，字节不动
+	const settled = readFileSync(dshPatch, "utf8");
+	dsh.hasPluginAny(dsh.RESIDENT);
+	assert.equal(readFileSync(dshPatch, "utf8"), settled);
+
+	dsh.removePlugin(dsh.RESIDENT);
+	assert.equal(readFileSync(dshPatch, "utf8"), "# 头部\n[]\n");
+});
+await t("数据目录里没有插件包时不自愈：不把 patch 指向不存在的文件，如实报未安装", () => {
+	const stale = "# 头部\n[]\n\n# >>> agent-purge:agent-purge\n- insert:\n    - id: agent-purge\n      name: agent-purge\n# <<< agent-purge:agent-purge\n";
+	writeFileSync(dshPatch, stale);
+	assert.equal(dsh.hasPluginAny(dsh.RESIDENT), false, "没插件包却报已装");
+	assert.equal(readFileSync(dshPatch, "utf8"), stale, "没有包就不该动 patch");
+});
+await t("旧副本里有用户改动（有指纹但对不上）：不删，留给调用方改名保留", () => {
+	writeFileSync(dshPatch, userPatch);
+	const legacyDir = join(webProfile, "node_modules", dsh.RESIDENT);
+	mkdirSync(legacyDir, { recursive: true });
+	writeFileSync(join(legacyDir, "package.json"), JSON.stringify({ name: dsh.RESIDENT, version: "0.0.0", type: "module", main: "index.js", agentPurge: true }));
+	writeFileSync(join(legacyDir, "index.js"), "改过的内容");
+	writeFileSync(join(legacyDir, ".agent-purge.files.json"), JSON.stringify({ "package.json": "x", "index.js": "y" }));
+	dsh.addPlugin(dsh.RESIDENT, "export default {};");
+	assert.equal(existsSync(legacyDir), true, "有指纹却被硬删了");
+	rmSync(join(webProfile, "node_modules"), { recursive: true, force: true });
+	dsh.removePlugin(dsh.RESIDENT);
+	assert.equal(readFileSync(dshPatch, "utf8"), userPatch);
+});
 await t("只有 web profile 时 persist.install(dsh).file 真的存在（issue #3 同源）", () => {
 	writeFileSync(dshPatch, userPatch);
 	const r = installTarget("dsh", { root: DATA, active: join(DATA, "personas", "alpha.md") });
