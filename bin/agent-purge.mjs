@@ -126,7 +126,7 @@ switch (cmd) {
 		break;
 	case "update":
 	case "upgrade": {
-		const { checkForUpdate, downloadFile, replaceSelfExecutable, canReplaceSelf, RELEASES_PAGE } = await import("../lib/update.mjs");
+		const { checkForUpdate, downloadFile, replaceSelfExecutable, canReplaceSelf, detectInstallType, RELEASES_PAGE } = await import("../lib/update.mjs");
 		const doDownload = argv.includes("--download") || argv.includes("-d") || argv.includes("--yes") || argv.includes("-y");
 		console.log("正在检查 GitHub Release 最新版本...");
 		const info = await checkForUpdate({ force: true });
@@ -136,7 +136,8 @@ switch (cmd) {
 			process.exitCode = 1;
 			break;
 		}
-		console.log(`当前运行版本：v${info.current}`);
+		const installType = detectInstallType();
+		console.log(`当前运行版本：v${info.current}（安装形态：${installType}）`);
 		if (info.published === false) {
 			console.log("尚无公开 Release；这不表示 npm 已是最新版。npm 安装可运行 npm outdated -g agent-purge。");
 			break;
@@ -151,6 +152,35 @@ switch (cmd) {
 			console.log(`\n【更新说明】\n${info.body.trim().slice(0, 500)}${info.body.length > 500 ? "..." : ""}`);
 		}
 
+		// 源码检出：更新就是这个目录里的 git pull，不走发布产物
+		if (installType === "git") {
+			const { gitCheckoutState, gitPullSelf } = await import("../lib/update.mjs");
+			const state = gitCheckoutState();
+			if (!state.ok) {
+				console.log(`\n✗ ${state.reason}`);
+				break;
+			}
+			console.log(`\n当前分支：${state.branch}${state.upstream ? ` → ${state.upstream}` : "（无上游）"}`);
+			if (state.dirty) {
+				console.log(`✗ 工作区有 ${state.dirty} 处未提交改动，先提交或撤销再更新。`);
+				process.exitCode = 1;
+				break;
+			}
+			if (!doDownload) {
+				console.log(`  · 在安装目录快进更新：\n     agent-purge update --download`);
+				break;
+			}
+			console.log("\n正在 git pull --ff-only...");
+			try {
+				const r = gitPullSelf();
+				if (r.output) console.log(`\n${r.output}`);
+				console.log(r.changed ? `✓ 已从 ${r.before} 快进到 ${r.after}。重启 agent-purge 生效。` : `✓ 已在 ${r.after}，没有新提交。`);
+			} catch (error) {
+				console.log(`✗ ${error.message}`);
+				process.exitCode = 1;
+			}
+			break;
+		}
 		const isExe = canReplaceSelf();
 		const targetExeAsset = info.assets?.find((a) => a.name.toLowerCase() === "agent-purge.exe");
 		const targetSetupAsset = info.assets?.find((a) => a.name.toLowerCase().endsWith("-setup.exe"));

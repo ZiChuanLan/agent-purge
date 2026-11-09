@@ -217,7 +217,7 @@ async function handle(req, res, ctx = {}) {
 		return send(res, 200, resClean);
 	}
 	if (req.method === "GET" && p === "/api/update") {
-		const { checkForUpdate, checkNpmVersion, canReplaceSelf, detectInstallType, compareSemver } = await import("../lib/update.mjs");
+		const { checkForUpdate, checkNpmVersion, canReplaceSelf, detectInstallType, compareSemver, gitCheckoutState } = await import("../lib/update.mjs");
 		const force = url.searchParams.get("force") === "1";
 		const cacheFile = join(DATA, "update-cache.json");
 		const isExe = canReplaceSelf();
@@ -244,6 +244,7 @@ async function handle(req, res, ctx = {}) {
 			hasUpdate,
 			installType,
 			isExe,
+			git: gitCheckoutState(),
 			execPath: process.execPath,
 			npm: {
 				ok: npm.ok,
@@ -267,9 +268,31 @@ async function handle(req, res, ctx = {}) {
 	}
 	if (req.method === "POST" && p === "/api/update-upgrade") {
 		const reqPayload = await body(req);
-		const { checkForUpdate, downloadFile, replaceSelfExecutable, canReplaceSelf } = await import("../lib/update.mjs");
+		const { checkForUpdate, downloadFile, replaceSelfExecutable, canReplaceSelf, detectInstallType, gitPullSelf } = await import("../lib/update.mjs");
 		const isExe = canReplaceSelf();
-		const upgradeType = reqPayload?.type || (isExe ? "exe" : "npm");
+		const installType = detectInstallType();
+		const upgradeType = reqPayload?.type || installType;
+
+		// 源码检出：更新就是在这个目录里 git pull，不下载任何发布产物。
+		// --ff-only 由 gitPullSelf 保证：从面板点出来的更新不该悄悄造一个合并提交。
+		if (upgradeType === "git") {
+			try {
+				const r = gitPullSelf();
+				const changed = r.changed ? `${r.before} → ${r.after}` : `已在 ${r.after}（无新提交）`;
+				return send(res, 200, {
+					ok: true,
+					type: "git",
+					version: r.after,
+					message: r.changed
+						? `已快进更新：${changed}。重启 agent-purge 后生效。`
+						: `当前分支 ${r.branch} 已是最新（${changed}）。`,
+					output: r.output,
+					command: "git pull --ff-only",
+				});
+			} catch (error) {
+				return send(res, 500, { ok: false, type: "git", error: error.message, command: "git pull --ff-only" });
+			}
+		}
 
 		if (upgradeType === "npm") {
 			const { execFile } = await import("node:child_process");

@@ -3,10 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { compareSemver, currentVersion, checkForUpdate, downloadFile, canReplaceSelf, replaceSelfExecutable, replaceExecutable } from '../lib/update.mjs';
+import { compareSemver, currentVersion, checkForUpdate, downloadFile, canReplaceSelf, replaceSelfExecutable, replaceExecutable, detectInstallType, isGitCheckout, gitCheckoutState, gitPullSelf } from '../lib/update.mjs';
 
 const pkgVersion = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
@@ -78,4 +79,79 @@ test('executable replacement uses destination-volume staging and preserves the o
     writeFileSync(next,'not exe');assert.throws(()=>replaceExecutable(current,next),/可执行文件/);assert.deepEqual(readFileSync(current),bytes);
     assert.equal(readdirSync(dir).some(name=>name.includes('.new-')),false);assert.equal(existsSync(next),true);
   } finally { rmSync(dir,{recursive:true,force:true}); }
+});
+
+// —— 源码检出（git clone 后直接 node bin/...）：更新就是这个目录里的 git pull ——
+// 全用临时仓库跑，不碰真实安装目录；上游用一个裸仓库扮，避免任何外网访问。
+function sh(cwd, ...args) {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true });
+  if (r.status !== 0) throw new Error(`git ${args.join(' ')} 失败：${r.stderr || r.stdout}`);
+  return (r.stdout || '').trim();
+}
+test('git checkout is its own install type and pulls fast-forward only', () => {
+  const base = mkdtempSync(join(tmpdir(), 'ap-git-'));
+  const bare = join(base, 'origin.git'), work = join(base, 'work'), other = join(base, 'other');
+  try {
+    sh(base, 'init', '--bare', '-b', 'main', bare);
+    sh(base, 'clone', bare, work);
+    writeFileSync(join(work, 'a.txt'), 'v1\n');
+    sh(work, 'add', '.'); sh(work, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'v1');
+    sh(work, 'push', '-u', 'origin', 'main');
+
+    // 上游有新提交，本地还没拉
+    sh(base, 'clone', bare, other);
+    writeFileSync(join(other, 'b.txt'), 'v2\n');
+    sh(other, 'add', '.'); sh(other, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'v2');
+    sh(other, 'push', 'origin', 'main');
+
+    assert.equal(isGitCheckout(work), true, '工作副本认得出自己是 git 检出');
+    assert.equal(isGitCheckout(base), false, '不是仓库根的目录不能算检出');
+
+    const before = gitCheckoutState({ root: work });
+    assert.equal(before.ok, true);
+    assert.equal(before.branch, 'main');
+    assert.equal(before.upstream, 'origin/main');
+    assert.equal(before.dirty, 0);
+
+    const pulled = gitPullSelf({ root: work });
+    assert.equal(pulled.ok, true);
+    assert.equal(pulled.changed, true, '落后时必须真的快进');
+    assert.notEqual(pulled.before, pulled.after);
+    assert.equal(existsSync(join(work, 'b.txt')), true, '新提交的文件落地');
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});
+test('git update refuses a dirty tree, a detached head and a missing upstream', () => {
+  const base = mkdtempSync(join(tmpdir(), 'ap-git-bad-'));
+  const bare = join(base, 'origin.git'), work = join(base, 'work'), solo = join(base, 'solo');
+  try {
+    sh(base, 'init', '--bare', '-b', 'main', bare);
+    sh(base, 'clone', bare, work);
+    writeFileSync(join(work, 'a.txt'), 'v1\n');
+    sh(work, 'add', '.'); sh(work, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'v1');
+    sh(work, 'push', '-u', 'origin', 'main');
+
+    // 未提交改动：必须拒绝，且不许自作主张 stash/copy
+    writeFileSync(join(work, 'a.txt'), 'local edit\n');
+    assert.equal(gitCheckoutState({ root: work }).dirty, 1);
+    assert.throws(() => gitPullSelf({ root: work }), /未提交改动/);
+    assert.equal(readFileSync(join(work, 'a.txt'), 'utf8'), 'local edit\n', '本地改动保持原样');
+    sh(work, 'checkout', '--', 'a.txt');
+
+    // detached HEAD：没有分支名，不能猜
+    sh(work, 'checkout', '--detach');
+    assert.throws(() => gitPullSelf({ root: work }), /HEAD|没有上游/);
+    sh(work, 'checkout', 'main');
+
+    // 没有上游：明确拒绝，不能默认 origin/main
+    sh(base, 'init', '-b', 'main', solo);
+    writeFileSync(join(solo, 'a.txt'), 'x\n');
+    sh(solo, 'add', '.'); sh(solo, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'x');
+    assert.equal(gitCheckoutState({ root: solo }).upstream, null);
+    assert.throws(() => gitPullSelf({ root: solo }), /没有上游/);
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});
+test('detectInstallType reports git for a source checkout and never for a compiled build', () => {
+  // 本测试就运行在源码检出里，所以必须报 git；编译态由 canReplaceSelf 分支在前面拦掉
+  assert.equal(isGitCheckout(), true);
+  assert.equal(detectInstallType(), canReplaceSelf() ? 'exe' : 'git');
 });

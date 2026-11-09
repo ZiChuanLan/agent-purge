@@ -710,7 +710,9 @@ function showUpdateDialog(res) {
   $('update-changelog-text').textContent = changelog || '暂无详细发布说明。';
   $('update-changelog-box').hidden = !changelog;
 
-  const isExe = res.isExe || res.installType === 'exe';
+  // 三种落地方式：编译产物就地换 exe、源码检出 git pull、npm 全局装。
+  // 源码检出如果按 npm 处理，装的是另一份全局副本，正在跑的这个仓库一点没动。
+  const type = res.installType || (res.isExe ? 'exe' : 'npm');
   const cmdBox = $('update-command-box');
   const doBtn = $('btn-do-upgrade');
   const statusEl = $('update-status');
@@ -718,10 +720,25 @@ function showUpdateDialog(res) {
   statusEl.textContent = '';
   statusEl.className = 'import-status';
 
-  if (isExe) {
+  if (type === 'exe') {
     cmdBox.hidden = true;
     doBtn.textContent = '一键就地升级';
     doBtn.title = '自动下载新版 EXE 并进行热替换';
+  } else if (type === 'git') {
+    cmdBox.hidden = false;
+    $('update-command-text').textContent = 'git pull --ff-only';
+    doBtn.textContent = '一键 git 更新';
+    doBtn.title = '在安装目录执行 git pull --ff-only，不下载发布产物';
+    const git = res.git || {};
+    if (git.dirty) {
+      statusEl.hidden = false;
+      statusEl.className = 'import-status error';
+      statusEl.textContent = `工作区有 ${git.dirty} 处未提交改动：先提交或撤销，否则更新会拒绝执行。`;
+    } else if (git.branch) {
+      statusEl.hidden = false;
+      statusEl.className = 'import-status';
+      statusEl.textContent = `当前分支 ${git.branch}${git.upstream ? ` → ${git.upstream}` : '（没有上游）'}；更新只做快进合并。`;
+    }
   } else {
     cmdBox.hidden = false;
     $('update-command-text').textContent = res.npm?.command || 'npm install -g agent-purge@latest';
@@ -785,16 +802,23 @@ $('btn-do-upgrade')?.addEventListener('click', async () => {
   if (!cachedUpdateInfo) return;
   const doBtn = $('btn-do-upgrade');
   const statusEl = $('update-status');
-  const isExe = cachedUpdateInfo.isExe || cachedUpdateInfo.installType === 'exe';
+  const type = cachedUpdateInfo.installType || (cachedUpdateInfo.isExe ? 'exe' : 'npm');
+  const busyText = type === 'exe' ? '正在下载替换...' : type === 'git' ? '正在 git pull...' : '正在执行 npm 升级...';
+  const waitText = type === 'exe'
+    ? '正在下载最新版本可执行文件并进行热替换，请稍候...'
+    : type === 'git'
+      ? '正在安装目录执行 git pull --ff-only，不下载发布产物...'
+      : '正在调用 npm 执行全局更新，可能需要十几秒...';
+  const retryText = type === 'exe' ? '重试就地升级' : type === 'git' ? '重试 git 更新' : '重试 npm 升级';
 
   doBtn.disabled = true;
-  doBtn.textContent = isExe ? '正在下载替换...' : '正在执行 npm 升级...';
+  doBtn.textContent = busyText;
   statusEl.hidden = false;
   statusEl.className = 'import-status';
-  statusEl.textContent = isExe ? '正在下载最新版本可执行文件并进行热替换，请稍候...' : '正在调用 npm 执行全局更新，可能需要十几秒...';
+  statusEl.textContent = waitText;
 
   try {
-    const res = await api('update-upgrade', { type: isExe ? 'exe' : 'npm' });
+    const res = await api('update-upgrade', { type });
     if (res.ok) {
       statusEl.className = 'import-status success';
       statusEl.textContent = res.message || '升级成功！';
@@ -809,13 +833,13 @@ $('btn-do-upgrade')?.addEventListener('click', async () => {
       statusEl.textContent = res.error || '更新失败';
       if (res.output) statusEl.textContent += `\n${res.output}`;
       doBtn.disabled = false;
-      doBtn.textContent = isExe ? '重试就地升级' : '重试 npm 升级';
+      doBtn.textContent = retryText;
     }
   } catch (err) {
     statusEl.className = 'import-status error';
     statusEl.textContent = err.message || '网络请求异常';
     doBtn.disabled = false;
-    doBtn.textContent = isExe ? '重试就地升级' : '重试 npm 升级';
+    doBtn.textContent = retryText;
   }
 });
 $('exit-btn')?.addEventListener('click', async () => {
