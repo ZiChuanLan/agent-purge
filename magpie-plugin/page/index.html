@@ -22,6 +22,21 @@
 		<span>模式</span>
 		<select id="mode"></select>
 	</label>
+	<div class="field scope-field">
+		<span>范围</span>
+		<div class="scope-radios">
+			<label class="radio-item"><input type="radio" name="scope" id="scope-all" value="all" checked> 全部生效</label>
+			<label class="radio-item"><input type="radio" name="scope" id="scope-include" value="include"> 仅勾选生效</label>
+			<label class="radio-item"><input type="radio" name="scope" id="scope-exclude" value="exclude"> 排除勾选</label>
+		</div>
+	</div>
+	<div id="agents-panel" class="agents-panel" hidden>
+		<div id="agents-list" class="agents-list"></div>
+		<div class="agent-add-row">
+			<input id="custom-agent" placeholder="添加其他 Agent 标识（如 kilo、zcode）" autocomplete="off" spellcheck="false">
+			<button id="add-agent-btn" type="button">添加</button>
+		</div>
+	</div>
 	<p id="status" class="status" role="status" aria-live="polite" hidden></p>
 </section>
 

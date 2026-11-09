@@ -20,13 +20,17 @@
 	let base = {}; // 服务端已知的完整 options：页面不管的键（如 agents）原样带回去
 	let picked = { persona: "", mode: "" }; // 页面上的选择，可能还没落地
 
-	// 内置人设来自 gen-personas.mjs 生成的 personas.js；导入的来自本插件 options
-	const fixed = () => window.PERSONAS ?? [];
+	const DEFAULT_PERSONAS = [
+		{ id: "neutral", name: "中性助手", description: "最小身份，技术细节该给就给，不编造" },
+		{ id: "terse", name: "极简", description: "只回答，不解释" },
+	];
+	// 内置人设来自 gen-personas.mjs 生成的 personas.js；未生成时提供默认起步人设；导入的来自本插件 options
+	const fixed = () => (Array.isArray(window.PERSONAS) && window.PERSONAS.length ? window.PERSONAS : (window.PERSONAS === undefined ? DEFAULT_PERSONAS : []));
 	const inline = () => (Array.isArray(base.inlinePersonas) ? base.inlinePersonas : []);
 	const rows = () => [...inline().map((p) => ({ ...p, name: p.name || p.id, imported: true })), ...fixed()];
 	const nameOf = (id) => rows().find((p) => p.id === id)?.name || id;
-	// inlinePersonas 也进 key：导入、删除后即使 persona 没变也要落地
-	const pickKey = () => JSON.stringify([picked.persona, picked.mode, inline()]);
+	// inlinePersonas、agents 与 disabledAgents 也进 key：改变后即使 persona 没变也要落地
+	const pickKey = () => JSON.stringify([picked.persona, picked.mode, inline(), base.agents, base.disabledAgents]);
 	// 跟随态写空串：hooks.js 只认 MODES 里的值，其余回退 state.json
 	const modeText = (m) => m || "跟随 state.json";
 	let sent = ""; // 最后一次成功落地的选择
@@ -34,9 +38,46 @@
 	let lastAt = 0;
 	let failed = "";
 
+	const KNOWN_AGENTS = [
+		{ id: "claude", name: "Claude Code" },
+		{ id: "codex", name: "Codex" },
+		{ id: "opencode", name: "OpenCode" },
+		{ id: "pi", name: "Pi" },
+		{ id: "dsh", name: "DeepSeek Harness" },
+		{ id: "antigravity", name: "Antigravity (agy)" },
+		{ id: "hermes", name: "Hermes" },
+		{ id: "cursor", name: "Cursor" },
+		{ id: "gemini", name: "Gemini CLI" },
+	];
+	let extraAgents = [];
+
+	const allAgentIds = () => {
+		const set = new Set(KNOWN_AGENTS.map((a) => a.id));
+		const extras = [];
+		for (const id of [...(base.agents ?? []), ...(base.disabledAgents ?? []), ...extraAgents]) {
+			if (id && typeof id === "string" && !set.has(id)) {
+				set.add(id);
+				extras.push({ id, name: id });
+			}
+		}
+		return [...KNOWN_AGENTS, ...extras];
+	};
+
+	let scopeMode = null;
+	const currentScope = () => {
+		if (scopeMode) return scopeMode;
+		if (Array.isArray(base.agents) && base.agents.length > 0) return "include";
+		if (Array.isArray(base.disabledAgents) && base.disabledAgents.length > 0) return "exclude";
+		return "all";
+	};
+
 	function paintStatus() {
 		const st = $("status");
-		const only = Array.isArray(base.agents) && base.agents.length ? `（只对 ${base.agents.join(" / ")} 生效）` : "";
+		const only = Array.isArray(base.agents) && base.agents.length
+			? `（只对 ${base.agents.join(" / ")} 生效）`
+			: Array.isArray(base.disabledAgents) && base.disabledAgents.length
+				? `（已排除 ${base.disabledAgents.join(" / ")}）`
+				: "";
 		st.hidden = false;
 		st.dataset.state = failed ? "error" : sending ? "busy" : "ok";
 		st.textContent = failed
@@ -44,6 +85,74 @@
 			: sending
 				? "正在保存…"
 				: `${picked.persona ? nameOf(picked.persona) : "跟随 state.json"} · ${modeText(picked.mode)}${only}`;
+	}
+
+	function paintAgents() {
+		const scope = currentScope();
+		const sAll = $("scope-all");
+		const sInc = $("scope-include");
+		const sExc = $("scope-exclude");
+		const panel = $("agents-panel");
+		const list = $("agents-list");
+		if (sAll) sAll.checked = scope === "all";
+		if (sInc) sInc.checked = scope === "include";
+		if (sExc) sExc.checked = scope === "exclude";
+		if (panel) panel.hidden = scope === "all";
+		if (!list) return;
+
+		list.textContent = "";
+		const activeList = scope === "include" ? (base.agents ?? []) : scope === "exclude" ? (base.disabledAgents ?? []) : [];
+		for (const agent of allAgentIds()) {
+			const on = activeList.includes(agent.id);
+			const label = document.createElement("label");
+			label.className = on ? "agent-chip checked" : "agent-chip";
+			label.dataset.agent = agent.id;
+
+			const cb = document.createElement("input");
+			cb.type = "checkbox";
+			cb.checked = on;
+			cb.onchange = () => toggleAgent(agent.id, cb.checked);
+
+			const name = document.createElement("span");
+			name.textContent = agent.name;
+
+			label.append(cb, name);
+			if (agent.id !== agent.name) {
+				const code = document.createElement("code");
+				code.textContent = agent.id;
+				label.append(code);
+			}
+			list.append(label);
+		}
+	}
+
+	function toggleAgent(id, checked) {
+		const scope = currentScope();
+		if (scope === "include") {
+			const set = new Set(base.agents ?? []);
+			if (checked) set.add(id);
+			else set.delete(id);
+			base = { ...base, agents: [...set], disabledAgents: [] };
+			save({});
+		} else if (scope === "exclude") {
+			const set = new Set(base.disabledAgents ?? []);
+			if (checked) set.add(id);
+			else set.delete(id);
+			base = { ...base, disabledAgents: [...set], agents: [] };
+			save({});
+		}
+	}
+
+	function changeScope(newScope) {
+		scopeMode = newScope;
+		if (newScope === "all") {
+			base = { ...base, agents: [], disabledAgents: [] };
+		} else if (newScope === "include") {
+			base = { ...base, disabledAgents: [] };
+		} else if (newScope === "exclude") {
+			base = { ...base, agents: [] };
+		}
+		save({});
 	}
 
 	function paint() {
@@ -97,6 +206,7 @@
 		}
 		if (again) again.focus();
 		paintStatus();
+		paintAgents();
 	}
 
 	function save(patch) {
@@ -154,6 +264,32 @@
 	paint();
 	$("mode").onchange = (e) => save({ mode: e.target.value });
 	$("q").oninput = () => paint();
+
+	const sAll = $("scope-all");
+	const sInc = $("scope-include");
+	const sExc = $("scope-exclude");
+	if (sAll) sAll.onchange = () => changeScope("all");
+	if (sInc) sInc.onchange = () => changeScope("include");
+	if (sExc) sExc.onchange = () => changeScope("exclude");
+
+	const customInput = $("custom-agent");
+	const addBtn = $("add-agent-btn");
+	const handleAddAgent = () => {
+		if (!customInput) return;
+		const val = customInput.value.trim().toLowerCase();
+		if (!val || !/^[a-zA-Z0-9._-]+$/.test(val)) return;
+		if (!extraAgents.includes(val)) extraAgents.push(val);
+		customInput.value = "";
+		const scope = currentScope();
+		if (scope === "all") {
+			changeScope("include");
+			toggleAgent(val, true);
+		} else {
+			toggleAgent(val, true);
+		}
+	};
+	if (addBtn) addBtn.onclick = handleAddAgent;
+	if (customInput) customInput.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); handleAddAgent(); } };
 
 	// —— 导入人设 md ——
 	// 沙箱页没有 fs、没有 fetch：原生 file input + File.text() 是读用户主动选的文件的唯一通道，

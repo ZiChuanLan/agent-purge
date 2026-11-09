@@ -80,6 +80,113 @@ h2 {
 	color: var(--muted);
 }
 
+.scope-field {
+	align-items: start;
+}
+
+.scope-radios {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	padding-top: 2px;
+}
+
+.radio-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	font-size: 13px;
+	cursor: pointer;
+	color: var(--fg);
+}
+
+.radio-item input[type="radio"] {
+	margin: 0;
+	cursor: pointer;
+}
+
+.agents-panel {
+	display: grid;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	background: color-mix(in srgb, var(--fg) 2%, transparent);
+}
+
+.agents-panel[hidden] {
+	display: none;
+}
+
+.agents-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.agent-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 8px;
+	font-size: 12px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: transparent;
+	cursor: pointer;
+	user-select: none;
+	transition:
+		border-color 0.12s,
+		background-color 0.12s;
+}
+
+.agent-chip:hover {
+	border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+}
+
+.agent-chip.checked {
+	border-color: var(--accent);
+	background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.agent-chip input[type="checkbox"] {
+	margin: 0;
+	cursor: pointer;
+}
+
+.agent-chip code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+	color: var(--muted);
+}
+
+.agent-add-row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+#custom-agent {
+	padding: 6px 10px;
+	font-size: 12px;
+}
+
+#add-agent-btn {
+	padding: 6px 12px;
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+	border: 1px solid var(--line);
+	border-radius: 9px;
+	background: transparent;
+	color: inherit;
+}
+
+#add-agent-btn:hover {
+	border-color: var(--accent);
+}
+
 select,
 #q {
 	font: inherit;

@@ -17,6 +17,7 @@ class Node {
 		this.title = "";
 		this.disabled = false;
 		this.hidden = false;
+		this.checked = false;
 		this._text = "";
 	}
 	set textContent(v) {
@@ -51,11 +52,19 @@ const ids = [
 	"del-all",
 	"import-count",
 	"import-err",
+	"scope-all",
+	"scope-include",
+	"scope-exclude",
+	"agents-panel",
+	"agents-list",
+	"custom-agent",
+	"add-agent-btn",
 ];
 const nodes = Object.fromEntries(ids.map((id) => [id, new Node()]));
 // index.html 上 #status / #import-err 带 hidden，app.js 必须自己解开它
 nodes.status.hidden = true;
 nodes["import-err"].hidden = true;
+nodes["agents-panel"].hidden = true;
 const document = { getElementById: (id) => nodes[id], createElement: (tag) => new Node(tag) };
 class Option {
 	constructor(text, value) {
@@ -215,7 +224,42 @@ ok(Array.isArray(afterDelete.inlinePersonas) && afterDelete.inlinePersonas.lengt
 ok(afterDelete.persona === "", "被删掉的人设不再选中（回到跟随）");
 ok(nodes["import-count"].textContent === "还没有导入", "计数回到空");
 
-// 8) 读不到 options 时不开放交互（否则这期间的点击会用空 base 把 agents 写没）
+// 8) 生效 Agent 范围配置（全部 / 仅勾选 / 排除）
+ok(nodes["scope-include"].checked === true, "初始 options.agents 有值时范围自动为仅勾选");
+ok(nodes["agents-panel"].hidden === false, "仅勾选时展示 agent 面板");
+ok(nodes["agents-list"].children.length >= 9, "预置了常见 Agent 列表");
+
+// 切换到排除模式
+nodes["scope-exclude"].onchange();
+await tick();
+const scopeExcludeCall = calls.at(-1);
+ok(Array.isArray(scopeExcludeCall.agents) && scopeExcludeCall.agents.length === 0, "切换排除模式时清空 agents 白名单");
+
+// 在排除模式下勾选 claude
+const claudeChip = nodes["agents-list"].children.find((c) => c.dataset?.agent === "claude");
+ok(claudeChip !== undefined, "存在 claude 选项");
+const claudeCb = claudeChip.children.find((k) => k.type === "checkbox");
+claudeCb.checked = true;
+claudeCb.onchange();
+await tick();
+const excludeClaudeCall = calls.at(-1);
+ok(JSON.stringify(excludeClaudeCall.disabledAgents) === '["claude"]', "勾选 claude 写入 disabledAgents");
+ok(nodes.status.textContent.includes("已排除 claude"), "状态行提示已排除 claude");
+
+// 添加自定义 agent
+nodes["custom-agent"].value = "kilo";
+nodes["add-agent-btn"].onclick();
+await tick();
+const addKiloCall = calls.at(-1);
+ok(addKiloCall.disabledAgents.includes("kilo"), "添加自定义 agent kilo 并写入 disabledAgents");
+
+// 切换到全部生效
+nodes["scope-all"].onchange();
+await tick();
+const scopeAllCall = calls.at(-1);
+ok(scopeAllCall.agents.length === 0 && scopeAllCall.disabledAgents.length === 0, "全部生效时清空过滤列表");
+ok(nodes["agents-panel"].hidden === true, "全部生效时隐藏 agent 面板");
+// 9) 读不到 options 时不开放交互（否则这期间的点击会用空 base 把 agents 写没）
 const nodes2 = Object.fromEntries(ids.map((id) => [id, new Node()]));
 nodes2.status.hidden = true;
 runInNewContext(appSrc, {

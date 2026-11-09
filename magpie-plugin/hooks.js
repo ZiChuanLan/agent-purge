@@ -16,6 +16,7 @@
 //   mode     覆盖启用状态下的模式；总暂停/分家停用始终优先
 //   persona  用哪个人设 id（默认 state.json 的当前人设）
 //   agents   只对这些 magpie agent 生效，如 ["claude","codex"]；不给 = 全部
+//   disabledAgents 排除这些 magpie agent，如 ["claude"]；优先级高于 agents
 //   inlinePersonas  页面导入的人设 [{id,name,text}]；和 personas/<id>.md 同名时以它为准
 import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -195,6 +196,11 @@ export async function onRequest(body, ctx) {
 		const cfg = current(typeof opt.persona === "string" ? opt.persona : null, inline, ctx?.agent);
 		const mode = MODES.includes(opt.mode) ? opt.mode : cfg.mode;
 		if (cfg.blocked || mode === "off" || !cfg.text) {
+			ctx?.report?.("skipped", 0);
+			return restored ? body : undefined;
+		}
+		const disabledAgents = Array.isArray(opt.disabledAgents) ? opt.disabledAgents : [];
+		if (disabledAgents.includes(ctx.agent)) {
 			ctx?.report?.("skipped", 0);
 			return restored ? body : undefined;
 		}

@@ -80,6 +80,17 @@ for (const protocol of Object.keys(bodies)) {
 	const otherBefore = JSON.stringify(other);
 	assert.equal(await onRequest(other, ctx(protocol, { agents: ["codex"] }, "claude")), undefined);
 	check(`${protocol} agents 白名单外放行`, JSON.stringify(other), otherBefore);
+
+	// disabledAgents 排除名单内的放行
+	const excluded = bodies[protocol]();
+	const excludedBefore = JSON.stringify(excluded);
+	assert.equal(await onRequest(excluded, ctx(protocol, { disabledAgents: ["claude"] }, "claude")), undefined);
+	check(`${protocol} disabledAgents 排除生效`, JSON.stringify(excluded), excludedBefore);
+
+	// disabledAgents 排除名单外的正常改写
+	const notExcluded = bodies[protocol]();
+	await onRequest(notExcluded, ctx(protocol, { disabledAgents: ["codex"], mode: "strict" }, "claude"));
+	check(`${protocol} disabledAgents 排除名单外正常改写`, sys(notExcluded), PERSONA);
 }
 
 // 页面导入的人设（options.inlinePersonas）：正文里自带的 frontmatter 也要剥掉
