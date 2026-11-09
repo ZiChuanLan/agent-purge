@@ -291,16 +291,18 @@
       }
     },
     "antigravity": {
-      "class": "binary-patch",
-      "override": "binary only",
-      "inject": false,
+      "class": "config",
+      "override": true,
+      "inject": true,
       "hotSwitch": false,
-      "patch": true,
-      "launcher": "等长替换 resources/bin/language_server.exe 的身份句；协议有 systemPromptOverride 字段未验",
-      "defaultSystemChars": "≈20,498（可打印区段上界）",
-      "purgedSystemChars": null,
-      "measuredVersion": "1.23.x",
-      "verify": "scan-asar.mjs / 二进制复扫"
+      "patch": false,
+      "launcher": "~/.gemini/config/AGENTS.md 托管块（App 与 CLI 共用，落 systemInstruction 的 <user_rules>，无需手动选 agent）",
+      "defaultSystemChars": 15378,
+      "purgedSystemChars": 15895,
+      "measuredVersion": "CLI 1.5.3 / desktop 1.23.x",
+      "verify": "隔离 HOME 真实二进制抓包：off/strict/replace/append 四模式均捕获主请求，marker 全落 systemInstruction（system 15378 → 15895/15844/15843 字），<user_rules> 位于 </identity> 之后；真模型三问均自称新人设",
+      "residue": "<identity> 段仍在提示词里（\"You are Antigravity, ...\"），靠 <user_rules> 的 take-precedence 声明压住",
+      "preferredMode": "strict"
     },
     "codebuddy": {
       "purgedSystemChars": null,

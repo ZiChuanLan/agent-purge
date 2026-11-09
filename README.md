@@ -154,12 +154,13 @@ agent-purge status
 | Codex / Claude Code | 0.166.0 / 2.1.316 | 启动入口已验证；热切未验证 |
 | CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口已验证；热切未验证 |
 | Kilo Code | @kilocode/cli 7.8.18 | off/strict/replace/append 四模式真实抓包；system 层 marker=1 |
+| Antigravity（App + CLI `agy`） | CLI 1.5.3 / 语言服务 1.23.x | off/strict/replace/append 四模式真实抓包；写 `~/.gemini/config/AGENTS.md`，落 system 层 `<user_rules>`；`<identity>` 段仍在，靠规则段优先级压住 |
 | WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 身份上下文已验证（国际版写 `app/app-config.json`）；热切未验证 |
 | PI-Desktop | 0.21.0（便携版） | 已实测：常驻写 `~/.pi/agent/SYSTEM.md`；热切装在 `plugins/imported` 的 imported 插件里，同一会话换人设/`/purge off` 下一轮生效 |
 
 首次安装或更新插件代码后，仍需重新加载宿主。**配置写入、历史测试通过、当前会话实际生效，是不同状态。**
 
-Windows 与 WSL/Linux 已执行回归，macOS 尚待实机验证。Hermes、zcode、antigravity 未计为本轮通过。请求角色、宿主残留、浏览器覆盖与已知安装问题统一记录在[兼容性与限制](docs/compatibility.md)，不以模型自称身份作为验收依据。
+Windows 与 WSL/Linux 已执行回归，macOS 尚待实机验证。Hermes、zcode 未计为本轮通过。请求角色、宿主残留、浏览器覆盖与已知安装问题统一记录在[兼容性与限制](docs/compatibility.md)，不以模型自称身份作为验收依据。
 
 ## 暂停与卸载
 

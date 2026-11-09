@@ -648,7 +648,7 @@ disable_codebase_upload = true
 
 // ============================== 静态结论行 ==============================
 const STATIC = [
-  { id: "antigravity", name: "antigravity (Google 1.23.x)", reason: "无 headless 入口（GUI）；身份句在 language_server.exe 内，改 prompt 需二进制补丁且需 GUI 端到端验证" },
+  { id: "antigravity", name: "antigravity (CLI agy 1.5.3)", reason: "CLI 有 -p 但只认账号登录；注入通道是 ~/.gemini/config/AGENTS.md（落 systemInstruction 的 <user_rules>），已在 bench/capture-system.mjs 里四模式抓过，不在此重复" },
 ];
 
 // ------------------------------------------------------------ 执行 ----

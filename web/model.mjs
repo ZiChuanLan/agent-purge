@@ -10,7 +10,7 @@ export const changed = (draft, base) => JSON.stringify(draft) !== JSON.stringify
 export const needsApply = (state, draft, base) => state.defaultsSet === false || changed(draft, base);
 export function sortedHarnesses(state, showAll = false) {
   const selected = h => (h.armed?.length ?? 0) > 0;
-  // 不可注入的（antigravity：只有二进制补丁，没有可用通道）不进接管列表；「显示本机未装的」也不放它进来
+  // 不可注入的家不进接管列表；「显示本机未装的」也不放它进来
   return [...(state.harnesses ?? [])]
     .filter(h => h.caps?.injectable !== false)
     .filter(h => showAll || selected(h) || h.found || h.homeExists)

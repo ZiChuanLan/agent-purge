@@ -8,6 +8,7 @@ import { opencodeSource } from "../lib/opencode.mjs";
 import { dataHome } from "../lib/home.mjs";
 import { swapFile } from "../lib/restore.mjs";
 import { installKilocode, uninstallKilocode } from "../lib/kilocode.mjs";
+import { antigravityBin, temporaryAntigravity } from "../lib/antigravity.mjs";
 
 function temporaryPlugin(harness, file, root, args) {
  let undo = null;
@@ -139,12 +140,20 @@ export const backends = {
 		};
 	},
 
-	antigravity: () => ({
-		manual: [
-			"prompt 在 resources/bin/language_server.exe（Go embed.FS）。",
-			"闭源 App 的身份句在二进制里，只能等长替换；改动会使签名失效、更新被覆盖，所以默认不做。",
-		],
-	}),
+	// Antigravity：人设只能靠 ~/.gemini/config/AGENTS.md（App 与 CLI 共用、App 自己拼进
+	// systemInstruction 的 <user_rules>）。CLI 没有 --system-prompt 之类的启动参数，
+	// 所以这里按「装着跑」处理：启动前写入托管块，退出按 stash 还原。
+	antigravity: ({ personaText, mode, args = [] }) => {
+		if (mode === "off") return { cmd: antigravityBin(), args };
+		let undo = null;
+		return {
+			cmd: antigravityBin(),
+			args,
+			note: "人设写进 ~/.gemini/config/AGENTS.md；退出按原字节还原（已常驻的块不会被动）",
+			setup: () => { if (!undo) undo = temporaryAntigravity({ personaText, mode }); },
+			cleanup: () => { if (undo) { undo(); undo = null; } },
+		};
+	},
 };
 
 
@@ -208,6 +217,18 @@ export const oneshots = {
 			args: ["run", prompt, "--format", "json"],
 			setup: () => { if (!installed) { installKilocode(root, { personaText, mode }); installed = true; } },
 			cleanup: () => { if (installed) { uninstallKilocode(root); installed = false; } },
+		};
+	},
+	antigravity: ({ prompt, personaText, mode }) => {
+		// agy 没有 --system-prompt 之类的启动参数：人设只能落 AGENTS.md，跑完按原字节还原
+		if (mode === "off") return { cmd: antigravityBin(), args: ["-p", prompt] };
+		let undo = null;
+		return {
+			cmd: antigravityBin(),
+			args: ["-p", prompt],
+			note: "人设写进 ~/.gemini/config/AGENTS.md；退出按原字节还原",
+			setup: () => { if (!undo) undo = temporaryAntigravity({ personaText, mode }); },
+			cleanup: () => { if (undo) { undo(); undo = null; } },
 		};
 	},
 
