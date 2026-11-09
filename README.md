@@ -65,6 +65,8 @@ agent-purge web
 
 SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux/macOS 使用 npm 或源码入口，不能运行 Windows EXE。平台验证范围见[兼容性说明](docs/compatibility.md)。
 
+控制台右上角的版本角标点开就是升级入口，按安装形态自动选路：独立 EXE 下载并就地热替换、npm 全局安装调 `npm install -g`、**源码检出（`git clone` 后直接 `node bin/agent-purge.mjs`）在安装目录执行 `git pull --ff-only`**，不下载任何发布产物。源码检出的「有没有更新」按上游提交算，版本号没变也会提示；工作区有未提交改动、处于游离 HEAD 或分支没有上游时一律拒绝并说明原因。
+
 </details>
 
 ## 人设与模式

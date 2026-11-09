@@ -217,7 +217,7 @@ async function handle(req, res, ctx = {}) {
 		return send(res, 200, resClean);
 	}
 	if (req.method === "GET" && p === "/api/update") {
-		const { checkForUpdate, checkNpmVersion, canReplaceSelf, detectInstallType, compareSemver, gitCheckoutState } = await import("../lib/update.mjs");
+		const { checkForUpdate, checkNpmVersion, canReplaceSelf, detectInstallType, compareSemver, gitTrackState } = await import("../lib/update.mjs");
 		const force = url.searchParams.get("force") === "1";
 		const cacheFile = join(DATA, "update-cache.json");
 		const isExe = canReplaceSelf();
@@ -235,7 +235,11 @@ async function handle(req, res, ctx = {}) {
 		if (npm.ok && npm.latest && compareSemver(latest, npm.latest) > 0) {
 			latest = npm.latest;
 		}
-		const hasUpdate = compareSemver(current, latest) > 0;
+		// 源码检出还有第二种「有更新」：上游多了提交但版本号没变。只有手动刷新才 fetch，
+		// 否则每次开面板都要连一次 GitHub。
+		const git = installType === "git" ? gitTrackState({ fetch: force }) : null;
+		const behind = Number(git?.behind) > 0;
+		const hasUpdate = compareSemver(current, latest) > 0 || behind;
 
 		return send(res, 200, {
 			ok: gh.ok || npm.ok,
@@ -244,7 +248,7 @@ async function handle(req, res, ctx = {}) {
 			hasUpdate,
 			installType,
 			isExe,
-			git: gitCheckoutState(),
+			git,
 			execPath: process.execPath,
 			npm: {
 				ok: npm.ok,

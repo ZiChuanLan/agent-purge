@@ -699,11 +699,18 @@ function showUpdateDialog(res) {
   if (!dialog) return;
 
   $('update-current-tag').textContent = `当前: v${res.current}`;
-  $('update-latest-tag').textContent = `最新: v${res.latest}`;
+  $('update-current-tag').textContent = `当前: v${res.current}`;
+  // 源码检出可能只是上游多了提交，版本号没动，这时「最新」不该显示成同一个版本
+  const gitBehind = Number(res.git?.behind) || 0;
+  const sameVersion = !res.latest || res.latest === res.current;
+  $('update-latest-tag').textContent = sameVersion && gitBehind
+    ? `最新: ${gitBehind} 个新提交`
+    : `最新: v${res.latest}`;
 
   const sources = [];
   if (res.npm?.ok && res.npm?.latest === res.latest) sources.push('npm');
   if (res.github?.ok && res.github?.latest === res.latest) sources.push('GitHub');
+  if (res.installType === 'git') sources.push('git');
   $('update-source-label').textContent = sources.length ? `来源: ${sources.join(' / ')}` : '';
 
   const changelog = (res.github?.body || res.body || '').trim();
@@ -765,10 +772,13 @@ async function checkAppUpdate(force = false) {
     }
     cachedUpdateInfo = res;
     vb.textContent = `v${res.current}`;
+    // 源码检出的「有新提交」和「有新版本」是两件事：前者版本号可能一点没变
+    const behind = Number(res.git?.behind) || 0;
+    const versionAhead = res.latest && res.latest !== res.current;
     if (res.hasUpdate) {
       vb.className = 'badge good';
-      vb.textContent = `v${res.current} (发现 v${res.latest})`;
-      vb.title = `发现新版本 v${res.latest}，点击查看并一键升级`;
+      vb.textContent = versionAhead ? `v${res.current} (发现 v${res.latest})` : `v${res.current} (上游 ${behind} 个新提交)`;
+      vb.title = versionAhead ? `发现新版本 v${res.latest}，点击查看并一键升级` : `upstream 有 ${behind} 个新提交，点击一键 git 更新`;
       if (force) {
         showUpdateDialog(res);
       }
