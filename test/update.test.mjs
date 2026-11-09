@@ -155,3 +155,20 @@ test('detectInstallType reports git for a source checkout and never for a compil
   assert.equal(isGitCheckout(), true);
   assert.equal(detectInstallType(), canReplaceSelf() ? 'exe' : 'git');
 });
+test('a failed pull throws instead of reporting success with stderr as output', () => {
+  const base = mkdtempSync(join(tmpdir(), 'ap-git-fail-'));
+  const work = join(base, 'work');
+  try {
+    sh(base, 'init', '-b', 'main', work);
+    writeFileSync(join(work, 'a.txt'), 'v1\n');
+    sh(work, 'add', '.'); sh(work, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'v1');
+    // 上游指向一个必定连不上的地址：git pull 非零退出，必须抛而不是返回 ok
+    sh(work, 'remote', 'add', 'origin', 'https://127.0.0.1:1/nope.git');
+    // 直接写 config：上游分支在远端不存在时 --set-upstream-to 会拒绝，但线上配置就是这种形态
+    sh(work, 'config', 'branch.main.remote', 'origin');
+    sh(work, 'config', 'branch.main.merge', 'refs/heads/main');
+    // 让 @{u} 能解析：远程跟踪引用手工造一个，这样才走到真正的 pull 失败
+    sh(work, 'update-ref', 'refs/remotes/origin/main', 'HEAD');
+    assert.throws(() => gitPullSelf({ root: work, timeout: 8000 }), /git pull 失败/);
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});
