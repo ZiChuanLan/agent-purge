@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none" role="img" aria-label="agent-purge">
+  <style>
+    .ap-shell { fill: #0F172A; }
+    .ap-core { fill: #2563EB; }
+    .ap-peel { fill: #94A3B8; }
+    @media (prefers-color-scheme: dark) {
+      .ap-shell { fill: #F8FAFC; }
+      .ap-core { fill: #3B82F6; }
+      .ap-peel { fill: #64748B; }
+    }
+  </style>
+  <path class="ap-shell" d="M13.5 6.5 4 16l9.5 9.5 4.8-4.8L13.6 16l4.7-4.7-4.8-4.8Z"/>
+  <path class="ap-core" d="M20.5 10.8 25.7 16l-5.2 5.2L15.3 16l5.2-5.2Z"/>
+  <path class="ap-peel" d="M21.8 5.2 28.4 11.8l-2.3 2.3-6.6-6.6 2.3-2.3Z"/>
+</svg>

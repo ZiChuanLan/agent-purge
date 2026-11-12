@@ -1,5 +1,9 @@
 <div align="center">
 
+<p>
+  <img src="web/assets/logo.svg" width="68" height="68" alt="agent-purge logo" />
+</p>
+
 # agent-purge
 
 **1つのペルソナで、複数のコーディングエージェントを一元管理。**
@@ -52,6 +56,10 @@ npx agent-purge web
 デフォルトのコンソールアドレスは `http://127.0.0.1:7788` です。初回起動時にすべてのエージェントを自動接収することはありません。
 
 ![agent-purge コンソール](docs/images/console-desktop.png)
+
+![agent-purge ツール詳細パネル](docs/images/console-detail.png)
+
+![agent-purge プロジェクトルール](docs/images/project-rules.png)
 
 <details>
 <summary>その他のインストール方法：Windows インストーラー、ポータブル版、ヘッドレス環境</summary>

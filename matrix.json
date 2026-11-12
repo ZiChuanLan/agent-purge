@@ -129,7 +129,157 @@
         },
         "note": "sys 通过",
         "preferredMode": "replace"
-      }
+      },
+      "modes": [
+        "replace"
+      ],
+      "modesNote": "只写 model_instructions_file 指向人设文件＝整份指令文件被换掉，模式参数不参与"
+    },
+    "gemini": {
+      "class": "launch-arg",
+      "override": true,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "GEMINI_SYSTEM_MD=<persona> gemini（环境变量指向系统提示词文件）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "0.68.0",
+      "verify": "源码实测 PromptProvider 读取 GEMINI_SYSTEM_MD 路径替换 core system prompt；未抓请求",
+      "modes": [
+        "replace"
+      ],
+      "modesNote": "GEMINI_SYSTEM_MD 是整份系统提示词替换；没有 append/strict 入口"
+    },
+    "crush": {
+      "class": "config",
+      "override": false,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "写入 ~/.config/crush/CRUSH.md 的托管块（全局上下文追加）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "v0.100.0",
+      "verify": "本机 v0.100.0 实测；README 明确 CRUSH.md 是 system prompt 的 personal additions，未抓包",
+      "modes": [
+        "append"
+      ],
+      "modesNote": "CRUSH.md 是系统提示词的追加上下文，不能整份替换；启动时读取，改完要重开"
+    },
+    "continue": {
+      "class": "launch-arg",
+      "override": false,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "cn --rule <persona>（把 persona 作为规则/上下文追加）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "1.5.47",
+      "verify": "真实安装 @continuedev/cli 1.5.47，--help 确认 --rule；规则不是 core system 替换，未抓包",
+      "modes": [
+        "append"
+      ],
+      "modesNote": "--rule 追加规则/上下文；没有整份替换 system prompt 的入口"
+    },
+    "qoder": {
+      "class": "launch-arg",
+      "override": true,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "qodercli --system-prompt <persona> 或 --append-system-prompt <text>",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "1.1.87",
+      "verify": "真实安装 @qoder-ai/qodercli 1.1.87，--help 确认两个参数；未登录、未抓包",
+      "modes": [
+        "replace",
+        "append"
+      ],
+      "modesNote": "官方提供整段 system prompt 与追加两个入口；没有独立 strict"
+    },
+    "kimi": {
+      "class": "launch-arg",
+      "override": true,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "kimi --agent-file <临时 agent.md>（frontmatter + persona 正文）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "2.5.3",
+      "verify": "真实安装 @moonshot-ai/kimi-code 2.5.3；bundle 里确认 agent file 的 prompt 正文解析，未登录、未抓包",
+      "modes": [
+        "replace"
+      ],
+      "modesNote": "agent file 的正文作为会话 system prompt；没有追加入口"
+    },
+    "auggie": {
+      "class": "launch-arg",
+      "override": false,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "auggie --rules <persona>（规则/上下文追加）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "0.37.1",
+      "verify": "真实安装 @augmentcode/auggie 0.37.1，--help 确认 --rules；规则不是 core system 替换，未抓包",
+      "modes": [
+        "append"
+      ],
+      "modesNote": "--rules 追加规则/上下文；没有整份替换 system prompt 的入口"
+    },
+    "goose": {
+      "class": "launch-arg",
+      "override": false,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "goose session --system <persona>（run 也支持 --system）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "1.59.0",
+      "verify": "真实下载 Windows release 1.59.0，session/run --help 确认 --system；无 provider 配置，真实 prompt 被拦",
+      "modes": [
+        "append"
+      ],
+      "modesNote": "--system 是 additional system instructions，不改写整份 core system prompt"
+    },
+    "qwen": {
+      "class": "launch-arg",
+      "override": true,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "qwen --system-prompt <persona>（replace）或 --append-system-prompt（append）；参数为整段字符串",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "0.27.2",
+      "verify": "官方 --help 实测存在 --system-prompt / --append-system-prompt；尚未用假 provider 抓请求",
+      "modes": [
+        "replace",
+        "append"
+      ],
+      "modesNote": "官方只提供整段覆盖与末尾追加两个参数；没有独立 strict，replace 就是整段覆盖"
+    },
+    "kiro": {
+      "class": "launch-arg",
+      "override": true,
+      "inject": true,
+      "hotSwitch": false,
+      "patch": false,
+      "launcher": "kiro-cli chat --agent agent-purge（临时写 ~/.kiro/agents/agent-purge.json 的 prompt 字段）",
+      "defaultSystemChars": null,
+      "purgedSystemChars": null,
+      "measuredVersion": "3.2.0",
+      "verify": "本机 3.2.0 实测 --agent / --no-interactive；custom agent 的 prompt 按官方文档即 system prompt，未登录时 agent validate 被拦",
+      "modes": [
+        "replace"
+      ],
+      "modesNote": "自定义 agent 的 prompt 是整段系统提示词；没有 append/strict 入口"
     },
     "claude": {
       "class": "launch-arg + binary-patch",
@@ -143,6 +293,11 @@
       "measuredVersion": "2.1.304",
       "verify": "capture.mjs",
       "residue": "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+      "modes": [
+        "replace",
+        "append"
+      ],
+      "modesNote": "启动参数只有整段替换 / 追加两个口；读不到宿主提示词，严格与替换等价",
       "armor": {
         "probe": {
           "bare": {
@@ -173,6 +328,11 @@
       "purgedSystemChars": 21,
       "measuredVersion": "1.0.62",
       "verify": "capture.mjs（辅助请求：会话标题 / dashboard）",
+      "modes": [
+        "replace",
+        "append"
+      ],
+      "modesNote": "启动参数只有整段替换 / 追加两个口；读不到宿主提示词，严格与替换等价",
       "armor": {
         "probe": {
           "bare": {
@@ -257,7 +417,11 @@
         "requiresFlag": "--ignore-rules",
         "measuredAt": "2026-10-27",
         "preferredMode": "replace"
-      }
+      },
+      "modes": [
+        "append"
+      ],
+      "modesNote": "写入型通道：install 不读模式参数，正文以托管块追加在 SOUL.md 末尾；strict/replace/append 输出完全一致，只保留真正发生的语义"
     },
     "zcode": {
       "class": "config-or-hook",
@@ -288,7 +452,11 @@
         },
         "sysBlockedReason": "before_agent_start hook 未生效，sys 层未测得可用注入点（改走 app-server 配置另测）",
         "note": "user 未通过，暂不作注入目标"
-      }
+      },
+      "modes": [
+        "append"
+      ],
+      "modesNote": "写入型通道：install 不读模式参数，正文以托管块追加在 AGENTS.md 末尾；三种模式输出一致，只保留 append"
     },
     "antigravity": {
       "class": "config",
@@ -315,6 +483,11 @@
       "verify": "行为验证（默认身份句可见，替换后无残留）",
       "launcher": "codebuddy --system-prompt <persona>；--system-prompt-file <path>（print 模式）",
       "override": true,
+      "modes": [
+        "replace",
+        "append"
+      ],
+      "modesNote": "启动参数只有整段替换 / 追加两个口；读不到宿主提示词，严格与替换等价",
       "armor": {
         "probe": {
           "bare": {

@@ -32,6 +32,24 @@ test("workbuddy: patchTemplateContent in strict/replace/append modes", () => {
 	assert.equal(off, original);
 });
 
+test("workbuddy: user-context-identity.tpl patch strips product_identity and tone in strict mode", () => {
+	const userContextTpl = `<identity_context>\n## SOUL.md\nPath: {{ SoulPath }}\n</identity_context>\n<product_identity>\nYou are {{ productName }}, a powerful AI assistant.\n</product_identity>\n<tone_and_style>\nBe professional.\n</tone_and_style>\n<user_custom_instructions>\n{{ UserCustomPrompt }}\n</user_custom_instructions>`;
+	const persona = "You are AP_CUSTOM_IDENTITY.";
+
+	const strict = patchTemplateContent(userContextTpl, persona, "strict", "workbuddy", "user-context-identity.tpl");
+	assert.doesNotMatch(strict, /You are \{\{ productName \}\}/);
+	assert.doesNotMatch(strict, /<tone_and_style>/);
+	assert.match(strict, /AP_CUSTOM_IDENTITY/);
+
+	const replace = patchTemplateContent(userContextTpl, persona, "replace", "workbuddy", "user-context-identity.tpl");
+	assert.doesNotMatch(replace, /You are \{\{ productName \}\}/);
+	assert.match(replace, /AP_CUSTOM_IDENTITY/);
+	assert.match(replace, /<tone_and_style>/);
+
+	const off = patchTemplateContent(userContextTpl, persona, "off", "workbuddy", "user-context-identity.tpl");
+	assert.equal(off, userContextTpl);
+});
+
 test("workbuddy: install and uninstall lifecycle with stash restoration", () => {
 	const dir = mkdtempSync(join(tmpdir(), "ap-wb-test-"));
 	const apHome = join(dir, "ap-data");

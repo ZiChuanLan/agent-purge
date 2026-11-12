@@ -107,6 +107,8 @@ agent-purge project off --dir /path/to/project
 
 目录以绝对路径登记。后续同步只处理已登记的目录，不跟着当前工作目录漂移；暂停保留登记，恢复后按原范围应用。
 
+Web 的「项目规则」页按规则文件分组管理：`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `AGENT.md` / `.clinerules` / `.roorules` 都可切换目录、查看读取方、按工具查看读取关系、查看写入差异和写入后的规则文件、预览托管块并写入或移除；本页操作会留下记录。同一个规则文件可能被多个工具读取，写入一次对所有读取方生效，不再要求选择托管归属。它和系统提示词接管是两条独立通道。「全部撤销接管」不会动项目块；全局暂停会撤下系统层项目块，恢复后按当前选择写回，仅规则宿主的块要在项目页单独移除。Cursor、Devin CLI、Amp、Cline、Roo Code 只支持这条规则通道，不替换主 agent 的 system prompt；Gemini CLI 另有 `GEMINI_SYSTEM_MD` 环境变量，Qwen Code 另有启动参数通道。
+
 项目通道不提供每个文件夹独立的人设；仍跟随全局或分家配置。其他执行器可能也读取同名 `AGENTS.md` / `CLAUDE.md`，同时开启项目与全局入口可能重复提供人设。
 
 ## 暂停、撤销和卸载
@@ -153,6 +155,6 @@ PowerShell 赋值仅影响当前会话；`setx` 影响之后新开的进程。�
 - **暂停后仍有旧内容**：已有历史不会清除；检查是否仍在旧会话，或另有独立提示词插件。
 - **恢复冲突**：保留报错指出的原文件和恢复材料，比较修改后再合并，不要直接删除备份。
 - **Windows 提示缺 Node**：薄包和安装器需要 PATH 中的 Node 20+；独立 `agent-purge.exe` 自带运行时。
-- **SSH / WSL 无桌面**：使用 `agent-purge web --no-open`，按终端地址访问；默认端口为 `7788`。
+- **SSH / WSL 无桌面**：使用 `agent-purge web --no-open`，按终端地址访问；默认端口为 `7788`，被系统保留或占用时会自动落到 `7890–7909`。
 - **更新显示无公开 Release**：不代表 npm 已是最新版。npm 安装用 `npm outdated -g agent-purge` 检查版本。
-- **换模型或中转后人设表现不同**：先区分“请求是否包含人设”和“模型是否遵循人设”。Web 的隔离验证不测试你的真实中转；需要核对中转前后的 system/developer 字段。不要把 API Key 或完整私密人设贴进公开 issue，见[验证范围](compatibility.md#验证状态与第三方中转)。
+- **换模型或中转后人设表现不同**：先区分“请求是否包含人设”和“模型是否遵循人设”。Web 的“安全试跑”不测试你的真实中转；需要核对中转前后的 system/developer 字段。不要把 API Key 或完整私密人设贴进公开 issue，见[验证范围](compatibility.md#验证状态与第三方中转)。

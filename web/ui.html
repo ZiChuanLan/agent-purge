@@ -6,110 +6,398 @@
 <meta name="color-scheme" content="light">
 <meta name="ap-server-gen" content="">
 <title>agent-purge · 提示词控制台</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232459cf'/%3E%3Cpath d='m8 23 8-15 8 15M11 18h10' fill='none' stroke='white' stroke-width='2.5'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M13.5 6.5 4 16l9.5 9.5 4.8-4.8L13.6 16l4.7-4.7-4.8-4.8Z' fill='%230F172A'/%3E%3Cpath d='M20.5 10.8 25.7 16l-5.2 5.2L15.3 16l5.2-5.2Z' fill='%232563EB'/%3E%3Cpath d='M21.8 5.2 28.4 11.8l-2.3 2.3-6.6-6.6 2.3-2.3Z' fill='%2394A3B8'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#F7F8FA">
 <link rel="stylesheet" href="/styles.css">
 <script type="module" src="/app.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">跳到主要内容</a>
-<div class="app-shell">
-<aside class="sidebar">
-<a class="brand" href="#console"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="m8 23 8-15 8 15M11 18h10"/></svg><span><strong>agent-purge</strong><small>提示词控制台</small></span></a>
-<nav aria-label="主要导航">
-<button data-page="console" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>控制台</button>
-<button data-page="library"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>人设库</button>
-<button data-page="diagnostics"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/><path d="m8 12 3 3 5-6"/></svg>验证与诊断</button>
-</nav>
-<div class="sidebar-foot"><span class="dot"></span> 本地配置 · 127.0.0.1<small>变更保存在这台电脑</small></div>
-</aside>
-<div class="workspace">
-<header class="topbar"><span id="connection">正在连接本地服务…</span><div class="topbar-actions"><button type="button" id="version-badge" class="badge" title="检查 GitHub Release 更新">版本加载中</button><button id="refresh" class="quiet">刷新状态</button><button type="button" id="exit-btn" class="quiet danger" title="退出 agent-purge 本地服务并关闭窗口">退出程序</button></div></header>
-<main id="main" tabindex="-1">
-<div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
-<section id="page-console" class="page" aria-labelledby="console-title">
-<div class="page-heading"><div><h1 id="console-title">控制台</h1><p>选好人设，明确范围，再应用。</p></div><div class="actions"><button id="power" class="secondary" disabled>读取状态中…</button><button id="disarm-all" class="quiet danger" title="撤销已登记的通道，保留人设和用户修改；不卸载程序">撤销全部接管</button></div></div>
-<div class="current-strip"><span id="power-status" class="badge">正在加载</span><div><strong id="current-persona">—</strong><span id="current-mode">等待读取当前配置</span></div><a href="#diagnostics" id="current-sync">尚无应用记录</a></div>
-<section class="panel settings" aria-labelledby="config-title">
-<div class="section-heading"><h2 id="config-title">人设与模式</h2><span id="draft-state" class="muted">加载中</span></div>
-<form id="config-form">
-<div class="config-grid"><div><label for="persona-select">应用人设</label><select id="persona-select" disabled></select><p id="persona-description" class="help"></p><button type="button" id="edit-current" class="text-button">编辑这份人设</button></div>
-<fieldset><legend>提示词处理方式</legend><div class="mode-options">
-<label class="mode-option"><input type="radio" name="mode" value="replace"><span><strong>换身份（默认）</strong><small>优先替换身份行；无法读取宿主文本的启动入口按「只留人设」处理</small></span></label>
-<label class="mode-option"><input type="radio" name="mode" value="strict"><span><strong>只留人设</strong><small>替换可控入口中的宿主文本；宿主仍可能额外添加身份、工具或运行说明</small></span></label>
-<label class="mode-option"><input type="radio" name="mode" value="append"><span><strong>追加</strong><small>宿主提示词原样保留，人设另加一份（两份身份可能打架）</small></span></label>
-</div><p class="help">实际层级取决于通道，可能是 system、developer 或项目上下文。不会直接修改工具定义、权限和模型参数。</p></fieldset></div>
-<div class="apply-bar"><span id="apply-hint" class="help">配置写入不代表现有会话已生效。</span><div class="actions"><button type="button" id="reset-config" class="quiet" disabled>撤销选择</button><button type="submit" id="apply" class="primary" disabled>应用变更</button></div></div>
-</form>
-</section>
-<section class="panel" aria-labelledby="scope-title">
-<div class="section-heading"><div><h2 id="scope-title">接管哪些 AI</h2><p id="scope-summary" class="help">正在检查本机执行器…</p></div><label class="check-label"><input type="checkbox" id="show-all">显示本机没装的</label></div>
-<div id="harness-list"><p class="empty">正在检查本机执行器…</p></div>
-</section>
-<details class="panel launch-settings"><summary>默认命令启动 <span id="default-summary" class="muted">未设置</span></summary><div class="detail-body"><p class="help">只决定裸敲 <code>agent-purge</code> 时启动谁，不改变上面的应用范围。</p><form id="default-form" class="inline-form"><label for="default-harness">默认执行器</label><select id="default-harness"></select><button class="secondary" type="submit">保存启动设置</button></form></div></details>
-</section>
-<section id="page-library" class="page" aria-labelledby="library-title" hidden>
-<div class="page-heading"><div><h1 id="library-title">人设库</h1><p>正文用于提示词，名称与说明只用于管理。</p></div><div class="actions"><button id="pull-personas" class="secondary" type="button">从外部拉取</button><button id="new-persona" class="primary" type="button">新建人设</button></div></div>
-<dialog id="import-dialog" class="modal-dialog"><form id="import-form" method="dialog">
-<div class="dialog-header"><h2>从外部拉取人设</h2><button type="button" id="close-import" class="quiet close-btn" aria-label="关闭">✕</button></div>
-<p class="help dialog-desc">可从公开 GitHub 仓库或本机目录批量导入 <code>.md</code> 提示词文件，自动跳过说明文档并写入本地人设库。</p>
-<div class="preset-row"><span class="muted">快捷推荐：</span><button type="button" class="preset-pill" data-preset="ZiChuanLan/some-magic">ZiChuanLan/some-magic</button></div>
-<div class="dialog-body">
-<label for="import-source">导入源（GitHub owner/repo 或 本地目录路径）</label>
-<input id="import-source" placeholder="如 ZiChuanLan/some-magic 或 D:\prompts" required autocomplete="off">
-<label class="check-label"><input type="checkbox" id="import-overwrite" checked>覆盖同名标识（已有标识以新内容为主）</label>
-<div id="import-status" class="import-status" hidden></div>
+
+<div class="shell">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-left">
+        <a class="brand" href="#console" aria-label="agent-purge 控制台">
+          <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <path class="mark-shell" d="M13.5 6.5 4 16l9.5 9.5 4.8-4.8L13.6 16l4.7-4.7-4.8-4.8Z"/>
+            <path class="mark-core" d="M20.5 10.8 25.7 16l-5.2 5.2L15.3 16l5.2-5.2Z"/>
+            <path class="mark-peel" d="M21.8 5.2 28.4 11.8l-2.3 2.3-6.6-6.6 2.3-2.3Z"/>
+          </svg>
+          <span class="brand-name">agent-purge</span>
+        </a>
+        <nav class="tabs" aria-label="主要导航">
+          <button type="button" data-page="console" aria-current="page">控制台</button>
+          <button type="button" data-page="library">人设库</button>
+          <button type="button" data-page="project">项目规则</button>
+          <button type="button" data-page="diagnostics">测试与记录</button>
+        </nav>
+      </div>
+      <div class="topbar-right">
+        <span id="connection" class="conn"><span class="conn-dot" aria-hidden="true"></span><span id="connection-text">正在连接本地服务</span></span>
+        <button type="button" id="version-badge" class="version" title="检查更新">版本加载中</button>
+        <button type="button" id="refresh" class="icon-btn" title="刷新状态" aria-label="刷新状态">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+        </button>
+        <button type="button" id="exit-btn" class="icon-btn" title="退出 agent-purge 本地服务并关闭窗口" aria-label="退出程序">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <main id="main" tabindex="-1">
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <section id="page-console" class="page" aria-labelledby="console-title">
+        <section class="command-bar" aria-labelledby="persona-title">
+          <div class="command-top">
+            <div class="command-persona">
+              <div class="persona-topline">
+                <h2 id="persona-title" class="field-label">当前人设</h2>
+                <strong id="current-persona" class="persona-name">—</strong>
+                <span id="current-mode" class="persona-meta">正在读取…</span>
+              </div>
+              <p id="persona-description" class="persona-desc">正在读取人设说明…</p>
+              <div class="persona-actions">
+                <label class="persona-switch" title="更换当前人设">
+                  <span>更换人设</span>
+                  <svg viewBox="0 0 12 12" width="11" height="11" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                  <select id="persona-select" disabled aria-label="更换人设"></select>
+                </label>
+                <span class="action-sep" aria-hidden="true"></span>
+                <button type="button" id="edit-current" class="link">编辑正文</button>
+                <button type="button" id="quick-new-btn" class="link">新建</button>
+                <button type="button" id="quick-pull-btn" class="link">从 GitHub 拉取</button>
+              </div>
+            </div>
+
+            <div class="command-status">
+              <div class="scope-meter">
+                <p class="deck-scope"><strong id="scope-count">0</strong> / <span id="scope-total">0</span> 已接管</p>
+                <span id="coverage-strip" class="coverage" aria-hidden="true"></span>
+              </div>
+              <div class="deck-power">
+                <span id="power-status" class="pill">正在读取</span>
+                <button type="button" id="power" class="btn btn-ghost" disabled>服务连接中…</button>
+                <button type="button" id="disarm-all" class="btn btn-ghost btn-quiet" title="撤销所有已启用的提示词配置，恢复原厂设置；不删除人设文件">全部撤销</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="command-bottom">
+            <div class="mode-field">
+              <span class="field-label" id="mode-label">默认力度</span>
+              <div class="segmented" role="radiogroup" aria-labelledby="mode-label">
+                <label><input type="radio" name="mode" value="replace" checked><span>替换身份</span></label>
+                <label><input type="radio" name="mode" value="strict"><span>只留人设</span></label>
+                <label><input type="radio" name="mode" value="append"><span>末尾追加</span></label>
+              </div>
+              <p class="mode-hint" id="mode-hint">只改助手对自己的认知，保留原厂工具与规范。</p>
+            </div>
+            <div class="apply-actions">
+              <span id="draft-state" class="draft-state">正在读取</span>
+              <button type="button" id="reset-config" class="btn btn-ghost" disabled>撤销改动</button>
+              <button type="submit" id="apply" class="btn btn-primary" form="config-form" disabled>应用变更</button>
+            </div>
+          </div>
+        </section>
+
+        <form id="config-form" class="sr-only" aria-hidden="true" tabindex="-1">
+          <input type="hidden" name="mode-hidden" value="replace">
+        </form>
+
+        <section class="tools" aria-labelledby="console-title">
+          <div class="tools-head">
+            <div class="tools-title-wrap">
+              <div class="tools-title-row">
+                <h1 id="console-title">接管范围</h1>
+                <span id="harness-count" class="target-count">0 个目标</span>
+              </div>
+              <p id="scope-summary" class="tools-summary">正在检测本机已安装的 AI 客户端…</p>
+            </div>
+            <div class="tools-controls">
+              <label class="target-search">
+                <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input id="harness-search" type="search" placeholder="搜索工具、命令或状态" autocomplete="off" aria-label="搜索接管目标">
+              </label>
+              <div class="target-filters" role="group" aria-label="筛选接管目标">
+                <button type="button" class="filter-chip is-active" data-filter="all" aria-pressed="true">全部</button>
+                <button type="button" class="filter-chip" data-filter="on" aria-pressed="false">已接管</button>
+                <button type="button" class="filter-chip" data-filter="ready" aria-pressed="false">可接管</button>
+              </div>
+              <label class="check"><input type="checkbox" id="show-all">显示未安装</label>
+              <label class="sr-only" for="batch-actions-select">批量操作</label>
+              <select id="batch-actions-select" class="select select-compact" title="批量设置接管范围或模式">
+                <option value="">批量操作…</option>
+                <option value="enable-ready">开启所有已就绪工具</option>
+                <option value="disable-all">关闭全部接管</option>
+                <option value="mode-preferred">恢复各家推荐力度</option>
+                <option value="mode-replace">全部改为「替换身份」</option>
+                <option value="mode-strict">全部改为「只留人设」</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="target-console">
+            <div id="harness-list" class="tool-grid" role="region" aria-label="接管目标列表"></div>
+            <aside id="tool-drawer" class="drawer" aria-label="工具接管详情" hidden>
+              <div class="drawer-slash" aria-hidden="true"></div>
+              <div id="tool-detail" class="target-detail"></div>
+            </aside>
+          </div>
+        </section>
+
+        <details class="prefs" id="launch-settings">
+          <summary>
+            <span>命令行启动首选项</span>
+            <span id="default-summary" class="prefs-value">未设置</span>
+          </summary>
+          <div class="prefs-body">
+            <p class="hint">在终端直接执行 <code>agent-purge</code> 时代为唤起的客户端；不影响上面各工具的接管范围。</p>
+            <form id="default-form" class="inline-form">
+              <label for="default-harness" class="sr-only">首选客户端</label>
+              <select id="default-harness" class="select"></select>
+              <button class="btn btn-primary" type="submit">保存</button>
+            </form>
+          </div>
+        </details>
+      </section>
+
+      <section id="page-library" class="page" aria-labelledby="library-title" hidden>
+        <div class="page-heading">
+          <div>
+            <h1 id="library-title">人设库</h1>
+            <p>正文会写进提示词；名称与说明只用于管理。</p>
+          </div>
+          <div class="heading-actions">
+            <button id="pull-personas" class="btn btn-ghost" type="button">从外部拉取</button>
+            <button id="new-persona" class="btn btn-primary" type="button">新建人设</button>
+          </div>
+        </div>
+
+        <div class="library">
+          <aside class="lib-list" aria-label="人设列表">
+            <label class="sr-only" for="persona-search">搜索人设</label>
+            <input id="persona-search" type="search" class="input" placeholder="搜索名称或说明">
+            <div id="persona-list" class="persona-list"></div>
+          </aside>
+
+          <section class="editor" aria-label="人设编辑器">
+            <div id="editor-empty" class="empty">从左侧选一份人设，查看或编辑正文。</div>
+            <form id="editor-form" hidden>
+              <div class="editor-head">
+                <h2 id="editor-title">编辑人设</h2>
+                <span id="editor-status" class="editor-status">未修改</span>
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="edit-id">标识</label>
+                  <input id="edit-id" class="input" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,63}" maxlength="64" autocomplete="off" spellcheck="false">
+                  <span class="hint">字母、数字、短横线、下划线；创建后不可改。</span>
+                </div>
+                <div class="field">
+                  <label for="edit-name">显示名称</label>
+                  <input id="edit-name" class="input" autocomplete="off">
+                </div>
+              </div>
+              <div class="field">
+                <label for="edit-desc">说明</label>
+                <input id="edit-desc" class="input" autocomplete="off">
+              </div>
+              <div class="field field-grow">
+                <label for="edit-body">人设正文 <span id="char-count" class="hint"></span></label>
+                <textarea id="edit-body" class="input textarea" required spellcheck="false" rows="18"></textarea>
+              </div>
+              <details class="fine">
+                <summary>高级元数据</summary>
+                <div class="field">
+                  <label for="edit-model">建议模型（逗号分隔，留空不限制）</label>
+                  <input id="edit-model" class="input" autocomplete="off">
+                </div>
+              </details>
+              <p id="editor-hint" class="hint"></p>
+              <div class="editor-actions">
+                <button id="delete-persona" class="btn btn-danger-quiet" type="button">删除</button>
+                <div class="heading-actions">
+                  <button id="save-persona" class="btn btn-ghost" type="submit">保存</button>
+                  <button id="save-apply" class="btn btn-primary" type="button">保存并应用</button>
+                </div>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section id="page-project" class="page" aria-labelledby="project-title" hidden>
+        <div class="page-heading">
+          <div>
+            <h1 id="project-title">项目规则</h1>
+            <p>写进项目根或工具自己的规则文件，只影响这个目录；和系统提示词接管是两条独立通道。</p>
+          </div>
+        </div>
+
+        <div class="project-toolbar">
+          <div class="field project-dir-field">
+            <label for="project-dir">项目目录</label>
+            <input id="project-dir" class="input" spellcheck="false" autocomplete="off" placeholder="例如 D:\work\my-project">
+          </div>
+          <button id="project-load" class="btn btn-primary" type="button">读取</button>
+          <button id="project-cwd" class="btn btn-ghost" type="button">当前目录</button>
+        </div>
+        <div id="project-recent" class="project-recent" role="group" aria-label="最近项目"></div>
+        <div class="project-scope-bar" role="note" aria-label="项目规则生效层级">
+          <div class="project-scope-item">
+            <span class="project-scope-label">全局人设</span>
+            <strong>系统提示词接管</strong>
+            <small>在「控制台」管理，影响整台机器</small>
+          </div>
+          <span class="project-scope-arrow" aria-hidden="true">→</span>
+          <div class="project-scope-item">
+            <span class="project-scope-label">项目规则</span>
+            <strong>当前目录的规则文件</strong>
+            <small>只写这个目录，文件里的托管块对所有读取方生效</small>
+          </div>
+        </div>
+        <div id="project-targets" class="project-targets"><p class="empty">正在读取项目规则…</p></div>
+        <p class="hint project-footnote">项目块只影响这个目录；同一个文件可能被多个工具读取，写入一次对所有读取方生效。全局人设仍来自「控制台」。全局暂停会撤下系统层项目块，恢复后按当前选择写回；仅规则宿主的块需在本页移除。「全部撤销」不会动这里。</p>
+      </section>
+
+      <section id="page-diagnostics" class="page" aria-labelledby="diagnostics-title" hidden>
+        <div class="page-heading">
+          <div>
+            <h1 id="diagnostics-title">测试与记录</h1>
+            <p>配置写没写进去、工具认没认到，分开看。这里的试跑不碰你正在用的会话。</p>
+          </div>
+          <div class="heading-actions">
+            <button id="sync-all" class="btn btn-ghost">重新同步现有范围</button>
+          </div>
+        </div>
+
+        <section class="panel" aria-labelledby="report-title">
+          <div class="panel-head">
+            <div>
+              <h2 id="report-title">上一次应用</h2>
+              <p id="report-meta" class="hint"></p>
+            </div>
+            <button id="retry-failed" class="btn btn-ghost" hidden>重试失败项</button>
+          </div>
+          <div id="apply-results" class="result-list"><p class="empty">尚无应用记录</p></div>
+        </section>
+
+        <section class="panel" aria-labelledby="capture-title">
+          <div class="panel-head">
+            <div>
+              <h2 id="capture-title">安全试跑</h2>
+              <p class="hint">在临时目录里用测试人设跑一遍，看请求里有没有真的带上人设。</p>
+            </div>
+          </div>
+          <div id="capture-results"><p class="muted">尚未加载试跑报告。</p></div>
+        </section>
+
+        <details class="panel prefs">
+          <summary>运行状态与路径</summary>
+          <div class="prefs-body">
+            <p class="hint">运行时没被确认的项目不会标成「当前会话已生效」。首次安装或更新插件后，需要重新加载宿主。</p>
+            <pre id="diagnostic-state" class="code-block"></pre>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <footer class="foot">配置写入与会话生效是两件事：以执行器回调和请求证据为准。</footer>
+  </div>
 </div>
-<div class="dialog-footer"><button type="button" id="cancel-import" class="quiet">取消</button><button type="submit" id="start-import" class="primary">开始拉取</button></div>
-</form></dialog>
-<dialog id="update-dialog" class="modal-dialog">
-<div class="dialog-header"><h2 id="update-dialog-title">发现新版本</h2><button type="button" id="close-update" class="quiet close-btn" aria-label="关闭">✕</button></div>
-<p class="help dialog-desc" id="update-dialog-desc">检查到最新版本发布，支持一键就地升级。</p>
-<div class="dialog-body">
-<div class="update-version-row">
-<span class="badge" id="update-current-tag">当前: v0.0.0</span>
-<span class="update-arrow">→</span>
-<span class="badge good" id="update-latest-tag">最新: v0.0.0</span>
-<span class="muted update-source-label" id="update-source-label">npm / GitHub</span>
-</div>
-<div id="update-changelog-box" class="update-changelog-box">
-<div class="update-changelog-header">更新说明</div>
-<div id="update-changelog-text" class="update-changelog-text"></div>
-</div>
-<div id="update-command-box" class="update-command-box">
-<div class="update-command-label">终端升级命令</div>
-<div class="update-command-row">
-<code id="update-command-text">npm install -g agent-purge@latest</code>
-<button type="button" id="copy-update-command" class="secondary" title="复制升级命令">复制</button>
-</div>
-</div>
-<div id="update-status" class="import-status" hidden></div>
-</div>
-<div class="dialog-footer">
-<button type="button" id="dismiss-update" class="quiet">稍后</button>
-<a id="update-github-link" href="https://github.com/ZiChuanLan/agent-purge/releases/latest" target="_blank" rel="noopener noreferrer" class="button secondary">Release 页面</a>
-<button type="button" id="btn-do-upgrade" class="primary">一键升级</button>
-</div>
+
+<div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+<dialog id="import-dialog" class="modal">
+  <form id="import-form" method="dialog">
+    <div class="modal-head">
+      <h2>从外部拉取人设</h2>
+      <button type="button" id="close-import" class="icon-btn" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <p class="hint">支持公开 GitHub 仓库（<code>owner/repo</code>）或本机目录；只导入 <code>.md</code> 提示词，自动跳过说明文档。</p>
+    <div class="modal-body">
+      <div class="preset-row">
+        <span class="hint">推荐</span>
+        <button type="button" class="chip chip-button" data-preset="ZiChuanLan/some-magic">ZiChuanLan/some-magic</button>
+      </div>
+      <div class="field">
+        <label for="import-source">导入源</label>
+        <input id="import-source" class="input" placeholder="owner/repo 或 D:\prompts" required autocomplete="off">
+      </div>
+      <label class="check"><input type="checkbox" id="import-overwrite" checked>覆盖同名标识</label>
+      <div id="import-status" class="status-box" hidden></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="cancel-import" class="btn btn-ghost">取消</button>
+      <button type="submit" id="start-import" class="btn btn-primary">开始拉取</button>
+    </div>
+  </form>
 </dialog>
-<div class="library-layout"><aside class="panel persona-sidebar"><label class="sr-only" for="persona-search">搜索人设</label><input id="persona-search" type="search" placeholder="搜索名称或说明"><div id="persona-list"></div></aside>
-<section class="panel editor-panel"><div id="editor-empty" class="empty">选择一份人设，查看或编辑正文。</div><form id="editor-form" hidden>
-<div class="section-heading"><h2 id="editor-title">编辑人设</h2><span id="editor-status" class="muted">未修改</span></div>
-<div class="two-fields"><div><label for="edit-id">标识</label><input id="edit-id" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,63}" maxlength="64" autocomplete="off"><span class="help">字母、数字、短横线、下划线</span></div><div><label for="edit-name">显示名称</label><input id="edit-name" autocomplete="off"></div></div>
-<label for="edit-desc">说明</label><input id="edit-desc" autocomplete="off">
-<label for="edit-body">人设正文 <span id="char-count" class="muted"></span></label><textarea id="edit-body" required spellcheck="false" rows="17"></textarea>
-<details><summary>高级元数据</summary><label for="edit-model">建议模型（逗号分隔，留空不限制）</label><input id="edit-model"></details>
-<div class="editor-actions"><button id="delete-persona" class="danger quiet" type="button">删除</button><div class="actions"><button id="save-persona" class="secondary" type="submit">保存</button><button id="save-apply" class="primary" type="button">保存并应用</button></div></div>
-<p id="editor-hint" class="help"></p>
-</form></section></div>
-</section>
-<section id="page-diagnostics" class="page" aria-labelledby="diagnostics-title" hidden>
-<div class="page-heading"><div><h1 id="diagnostics-title">验证与诊断</h1><p>磁盘同步与真实请求验证分开记录。</p></div><button id="sync-all" class="secondary">重新同步已选范围</button></div>
-<section class="panel"><div class="section-heading"><div><h2>最近一次应用</h2><p id="report-meta" class="help"></p></div><button id="retry-failed" class="secondary" hidden>重试失败项</button></div><div id="apply-results" class="empty">尚无应用记录</div></section>
-<section class="panel"><div class="section-heading"><h2>真实 harness 请求验证</h2><span class="badge">独立测试</span></div><div id="capture-results"><p class="muted">尚未加载验证报告。</p></div></section>
-<details class="panel"><summary>状态与路径</summary><div class="detail-body"><p class="help">运行时未确认的项目不会标为当前会话已生效。首次安装或更新插件代码需要重新加载宿主。</p><pre id="diagnostic-state"></pre></div></details>
-</section>
-</main>
-<footer>配置写入与会话生效是两件事。以执行器回调和请求证据为准。</footer>
-</div>
-</div>
+
+<dialog id="update-dialog" class="modal">
+  <div class="modal-head">
+    <h2 id="update-dialog-title">发现新版本</h2>
+    <button type="button" id="close-update" class="icon-btn" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <p class="hint" id="update-dialog-desc">检查到最新版本，可以就地升级。</p>
+  <div class="modal-body">
+    <div class="update-versions">
+      <span class="chip mono" id="update-current-tag">当前 v0.0.0</span>
+      <span class="update-arrow" aria-hidden="true">→</span>
+      <span class="chip chip-good mono" id="update-latest-tag">最新 v0.0.0</span>
+      <span class="hint" id="update-source-label"></span>
+    </div>
+    <div id="update-changelog-box" class="update-changelog">
+      <div class="update-changelog-head">更新说明</div>
+      <div id="update-changelog-text" class="update-changelog-text"></div>
+    </div>
+    <div id="update-command-box">
+      <div class="field-label">终端升级命令</div>
+      <div class="command-row">
+        <code id="update-command-text">npm install -g agent-purge@latest</code>
+        <button type="button" id="copy-update-command" class="btn btn-ghost">复制</button>
+      </div>
+    </div>
+    <div id="update-status" class="status-box" hidden></div>
+  </div>
+  <div class="modal-foot">
+    <button type="button" id="dismiss-update" class="btn btn-ghost">稍后</button>
+    <a id="update-github-link" href="https://github.com/ZiChuanLan/agent-purge/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">Release 页面</a>
+    <button type="button" id="btn-do-upgrade" class="btn btn-primary">一键升级</button>
+  </div>
+</dialog>
+
+<dialog id="confirm-dialog" class="modal">
+  <form id="confirm-form" method="dialog">
+    <div class="modal-head">
+      <h2 id="confirm-dialog-title">确认开启接管</h2>
+      <button type="button" id="close-confirm" class="icon-btn" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <p class="hint">开启后会改写目标工具的系统提示词，可能清除原厂身份与限制。</p>
+    <div class="modal-body">
+      <div class="confirm-target">
+        <span class="hint">目标工具</span>
+        <strong id="confirm-harness-title">—</strong>
+        <span id="confirm-harness-badge" class="chip">配置托管</span>
+      </div>
+      <div class="backup-note">
+        <strong>写入前先做完整备份</strong>
+        <p>每个被改动的文件都会按原字节建立 SHA256 快照；关闭接管时逐位还原。人设与你自己的修改不受影响。</p>
+      </div>
+      <div class="legal-note">
+        <strong>使用须知</strong>
+        <p>仅供本地合法的人设定制与模型指令研究。开启后会剥离或改写宿主内置的系统提示词；请遵守各软件的使用条款，并对生成内容与操作后果自行负责。</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="cancel-confirm" class="btn btn-ghost">取消</button>
+      <button type="submit" id="btn-do-confirm" class="btn btn-primary">确认开启</button>
+    </div>
+  </form>
+</dialog>
 </body>
 </html>

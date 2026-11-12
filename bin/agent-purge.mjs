@@ -46,8 +46,21 @@ if (recovered > 0) console.log(`[restore] 回滚了 ${recovered} 个上次残留
 
 // 编译态与脚本态使用同一个 Web 入口；0 表示系统分配空闲端口，供隔离 smoke 使用。
 if (argv[0] === "--serve") {
-	const port = argv[1] === undefined ? 7788 : Number(argv[1]);
+	let port = argv[1] === undefined ? 7788 : Number(argv[1]);
 	if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("端口必须为 0..65535 的整数");
+	// 低层 --serve 也必须处理 Windows/Hyper-V 的保留端口 EACCES，不能只让 web 子命令回退。
+	if (port !== 0) {
+		const bind = await bindState(port);
+		if (!bind.ok && bind.code === "EACCES") {
+			const fallback = await findFreePort(7890, 7909);
+			if (!fallback) {
+				console.error(`端口 ${port} 被系统保留（EACCES），7890-7909 也没有空闲端口；请用 --serve <port> 指定其他端口。`);
+				process.exit(1);
+			}
+			console.warn(`端口 ${port} 被系统保留（EACCES），改用 ${fallback}。`);
+			port = fallback;
+		}
+	}
 	serveWeb(port, { autoExit: argv.includes("--auto-exit") });
 	await new Promise(() => {});
 }
@@ -731,21 +744,50 @@ async function lsCmd() {
 	console.log(`\n* = active（agent-purge use <id> 切换）`);
 }
 
+/** 探测端口能否绑定；Windows 的 Hyper-V 保留段会返回 EACCES，而不是 EADDRINUSE。 */
+async function bindState(port) {
+	const { createServer } = await import("node:net");
+	return await new Promise(resolve => {
+		const probe = createServer();
+		probe.once("error", error => resolve({ ok: false, code: error.code }));
+		probe.once("listening", () => probe.close(() => resolve({ ok: true })));
+		probe.listen(port, "127.0.0.1");
+	});
+}
+
+async function findFreePort(start, end) {
+	for (let port = start; port <= end; port += 1) {
+		if ((await bindState(port)).ok) return port;
+	}
+	return null;
+}
+
 async function webCmd(options = {}) {
 	const port = Number(flag("--port", "7788"));
 	if (!Number.isInteger(port) || port < 0 || port > 65535) die("端口必须为 0..65535 的整数");
 	const noOpen = argv.includes("--no-open");
 	const autoExit = options.autoExit ?? (argv.includes("--auto-exit") || (isCompiled() && !argv.includes("--no-auto-exit")));
-	const url = `http://127.0.0.1:${port}`;
 	const { openAppWindow } = await import("../lib/window.mjs");
-	const probeAlive = async () => {
+	const probeAliveFor = async candidate => {
 		try {
-			const res = await fetch(`${url}/api/state`, { signal: AbortSignal.timeout(1500) });
+			const res = await fetch(`http://127.0.0.1:${candidate}/api/state`, { signal: AbortSignal.timeout(1500) });
 			if (!res.ok) return false;
 			const data = await res.json().catch(() => null);
 			return Boolean(data && typeof data === "object" && ("version" in data || "personas" in data));
 		} catch { return false; }
 	};
+	let activePort = port;
+	if (port !== 0) {
+		const bind = await bindState(port);
+		if (!bind.ok && !(await probeAliveFor(port))) {
+			const fallback = await findFreePort(7890, 7909);
+			if (!fallback) die(`端口 ${port} 不可用（${bind.code ?? "unknown"}），7890-7909 也没有空闲端口；请用 --port 指定。`);
+			activePort = fallback;
+			console.warn(`端口 ${port} 不可用（${bind.code ?? "unknown"}），改用 ${fallback}。`);
+		}
+	}
+	const url = `http://127.0.0.1:${activePort}`;
+	const probeAlive = () => probeAliveFor(activePort);
 
 	// --detach：脱离当前终端后台存活，日志丢弃
 	if (argv.includes("--detach")) {
@@ -759,7 +801,7 @@ async function webCmd(options = {}) {
 			process.exit(0);
 		}
 		// 源码态 execPath 是 node，得连脚本路径一起给；编译态 execPath 就是 exe 本体
-		const serveArgs = ["--serve", String(port)];
+		const serveArgs = ["--serve", String(activePort)];
 		if (autoExit) serveArgs.push("--auto-exit");
 		const serve = isCompiled() ? serveArgs : [join(ROOT, "web", "server.mjs"), ...serveArgs];
 		const child = spawn(process.execPath, serve, {
@@ -791,15 +833,15 @@ async function webCmd(options = {}) {
 				}
 				process.exit(0);
 			}
-			console.error(`${port} 已被占用且未响应 agent-purge 请求：可能是老实例卡死或其他程序占用。`);
-			console.error(`清掉再启：Get-NetTCPConnection -LocalPort ${port} -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`);
+			console.error(`${activePort} 已被占用且未响应 agent-purge 请求：可能是老实例卡死或其他程序占用。`);
+			console.error(`清掉再启：Get-NetTCPConnection -LocalPort ${activePort} -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`);
 		} else {
 			console.error(`web 启动失败：${e.message}`);
 		}
 		process.exit(1);
 	};
 
-	const server = serveWeb(port, { autoExit, onError: onServerError });
+	const server = serveWeb(activePort, { autoExit, onError: onServerError });
 	if (!noOpen) {
 		server.once("listening", () => {
 			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`);

@@ -1,8 +1,12 @@
 <div align="center">
 
+<p>
+  <img src="web/assets/logo.svg" width="72" height="72" alt="agent-purge logo" />
+</p>
+
 # agent-purge
 
-**一份人设，统一管理多个 coding agent。**
+**一份人设，统一接管本机多个 coding agent。**
 
 [English](README.en.md) | [日本語](README.ja.md) | 简体中文
 
@@ -16,40 +20,48 @@
   </a>
 </p>
 
-[快速开始](#快速开始) · [人设与模式](#人设与模式) · [应用范围](#应用范围) · [支持情况](#支持情况) · [暂停与卸载](#暂停与卸载) · [免责与合规声明](#免责与合规声明)
+[快速开始](#快速开始) · [界面一览](#界面一览) · [人设与模式](#人设与模式) · [应用范围](#应用范围) · [支持情况](#支持情况) · [暂停与卸载](#暂停与卸载) · [免责与合规声明](#免责与合规声明)
 
 </div>
 
-agent-purge 是一个本地提示词配置工具，为 Codex、Claude Code、OpenCode、pi 等执行器提供统一的人设管理入口。你可以在 Web 控制台中配置，也可以直接通过命令行启动；不同执行器仍保留自己的工具、模型和工作流程。
+agent-purge 是一个本地提示词与人设编排控制台，为 Pi、Codex、Claude Code、OpenCode、Gemini CLI、Qwen Code、Kiro CLI 等执行器提供统一的人设管理入口。你可以在浏览器控制台中点击切换，也可以直接用命令行启动；每个宿主仍完整保留自己的模型、工具与工作流。
 
 ## 核心能力
 
-- **一份配置，多种入口**：CLI 与 Web 共用人设和状态，支持单次启动、常驻配置、会话扩展与项目规则。
-- **按执行器独立设置**：默认跟随全局，也能为某个执行器单独选择人设或模式。
-- **支持热切，也说明边界**：具备每轮回调的动态通道可在下一轮读取变更；静态入口需要新会话。
-- **变更可追溯、可撤销**：记录托管写入和恢复依据；外部修改会保留，恢复冲突明确报错。
-- **本地优先、零生产依赖**：不需要额外云端配置服务，人设与程序分开保存，升级不覆盖用户数据。
+- **一份人设，多端入口**：CLI 与 Web 共用同一份人设库与账本，支持单次启动、常驻配置、会话内 `/purge` 热切与按目录写入项目规则。
+- **能力诚实、分家自治**：默认跟随全局人设与改写力度，也可按工具单独覆写；界面严格按各家实测支持度展示可用通道与力度，不摆假开关。
+- **支持热切，也明示边界**：Pi / omp / OpenCode / dsh 等具备每轮回调的动态通道下一轮即生效；静态配置或启动参数入口明示需新开会话。
+- **文件共享与原子可逆**：项目规则按 `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` 文件共享托管，支持写入前 diff 预览与 SHA 冲突检测；每次写入均保留原字节 `stash` 快照，随时可逐位撤回。
+- **零生产依赖、本地优先**：无外部后端、不上传配置，数据保存在独立目录（默认 `~/.agent-purge/`），升级不覆盖用户人设。
 
 ## 快速开始
 
-需要 **Node.js 20+**，并先安装你要使用的 coding agent。
+需要 **Node.js 20+**，并先在本机安装你要管理的 coding agent。
 
 ```bash
 npm install -g agent-purge
 agent-purge web
 ```
 
-也可以直接使用 `npx agent-purge web`，不进行全局安装。
+也可以直接运行 `npx agent-purge web`，无需全局安装。
 
-1. 在「人设库」编辑起步模板，或新建自己的人设。
-2. 回到「控制台」选择人设和模式，保存设置，再开启需要管理的执行器。
-3. 按执行器详情中的提示，新建会话或重新加载插件。
+1. 在 **「人设库」** 编辑起步模板或新建人设（支持从 GitHub 仓库或本地目录批量拉取）。
+2. 回到 **「控制台」** 选择人设与默认力度、保存设置，打开目标工具开关或点开右侧详情工作区调优通道。
+3. 在 **「项目规则」** 为指定代码库写入局部规则文件（仅影响该目录，随时可无损移除）。
 
-控制台默认地址为 `http://127.0.0.1:7788`。首次打开不会自动接管所有执行器；默认启动项与应用范围分别配置。
+控制台默认监听 `http://127.0.0.1:7788`；若端口被系统保留或占用，会自动顺延至 `7890–7909` 空闲端口并打开独立桌面窗口。首次启动不会自动接管任何工具。
 
-![agent-purge 控制台](docs/images/console-desktop.png)
+## 界面一览
 
-[查看窄屏布局](docs/images/console-mobile.png)
+![agent-purge 控制台总览](docs/images/console-desktop.png)
+
+![agent-purge 工具详情与安全试跑](docs/images/console-detail.png)
+
+系统提示词接管在 **「控制台」**；按项目目录写入的 `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `AGENT.md` / `.clinerules` / `.roorules` 在 **「项目规则」** 页按文件统一托管。
+
+![agent-purge 项目规则](docs/images/project-rules.png)
+
+[查看移动端窄屏布局](docs/images/console-mobile.png)
 
 <details>
 <summary>其他安装方式：Windows 安装器、便携包与无桌面环境</summary>
@@ -155,10 +167,22 @@ agent-purge status
 | DSH | 0.2.1-rc.5 | 已验证（SDK 同会话；headless/web/desktop 三形态四模式已抓） |
 | Codex / Claude Code | 0.166.0 / 2.1.316 | 启动入口已验证；热切未验证 |
 | CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口已验证；热切未验证 |
+| Qwen Code | 0.27.2 | `--system-prompt` / `--append-system-prompt` 参数入口已验证；请求抓包未做 |
+| Gemini CLI | 0.68.0 | `GEMINI_SYSTEM_MD` 指向人设文件，PromptProvider 替换 core system prompt；请求抓包未做 |
+| Crush | v0.100.0 | 本机实测；全局 `CRUSH.md` 是 system prompt 的追加上下文，写托管块可逆；请求抓包未做 |
+
+| Continue CLI | 1.5.47 | 真实安装 `@continuedev/cli`；`--rule` 追加规则/上下文，不是 core system 替换；未抓包 |
+| Qoder CLI | 1.1.87 | 真实安装 `@qoder-ai/qodercli`；`--system-prompt` / `--append-system-prompt` 两个入口已验证，未登录、未抓包 |
+| Kimi Code | 2.5.3 | 真实安装 `@moonshot-ai/kimi-code`；`--agent-file` 的 Markdown 正文作为 system prompt，未登录、未抓包 |
+| Auggie CLI | 0.37.1 | 真实安装 `@augmentcode/auggie`；`--rules` 追加规则/上下文，不是 core system 替换；未抓包 |
+| Goose | 1.59.0 | 真实下载 Windows release；`session --system` / `run --system` 追加系统指令；本机无 provider，真实 prompt 被拦 |
+| Kiro CLI | 3.2.0 | `--agent` / `--no-interactive` 参数入口已验证；自定义 agent 的 `prompt` 按官方文档作为 system prompt，未登录校验、未抓包 |
 | Kilo Code | @kilocode/cli 7.8.18 | off/strict/replace/append 四模式真实抓包；system 层 marker=1 |
 | Antigravity（App + CLI `agy`） | CLI 1.5.3 / 语言服务 1.23.x | off/strict/replace/append 四模式真实抓包；写 `~/.gemini/config/AGENTS.md`，落 system 层 `<user_rules>`；`<identity>` 段仍在，靠规则段优先级压住 |
 | WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 身份上下文已验证（国际版写 `app/app-config.json`）；热切未验证 |
 | PI-Desktop | 0.21.0（便携版） | 已实测：常驻写 `~/.pi/agent/SYSTEM.md`；热切装在 `plugins/imported` 的 imported 插件里，同一会话换人设/`/purge off` 下一轮生效 |
+
+Cursor、Devin CLI、Copilot CLI、Amp、Cline、Roo Code、Gemini CLI、Qwen Code、Crush 的规则文件已接入「项目规则」页；其中 Cursor / Devin / Copilot / Amp / Cline / Roo 只写规则，不替换主 agent 的 system prompt。Muse Code 目前没有可安装的 CLI，暂不接入。
 
 首次安装或更新插件代码后，仍需重新加载宿主。**配置写入、历史测试通过、当前会话实际生效，是不同状态。**
 

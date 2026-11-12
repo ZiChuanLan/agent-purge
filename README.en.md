@@ -1,5 +1,9 @@
 <div align="center">
 
+<p>
+  <img src="web/assets/logo.svg" width="68" height="68" alt="agent-purge logo" />
+</p>
+
 # agent-purge
 
 **One persona to govern multiple coding agents.**
@@ -52,6 +56,10 @@ npx agent-purge web
 The default console runs at `http://127.0.0.1:7788`. On first launch, it will not automatically arm any harness.
 
 ![agent-purge Console](docs/images/console-desktop.png)
+
+![agent-purge Tool Inspector](docs/images/console-detail.png)
+
+![agent-purge Project Rules](docs/images/project-rules.png)
 
 <details>
 <summary>Other Installation Methods: Windows Installer, Portable Package, Headless Environments</summary>

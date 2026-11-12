@@ -13,8 +13,9 @@ for (const key of ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "DSH_HOME", "CODEX_
 process.env.AGENT_PURGE_HOME = join(dir, "data");
 process.env.AGENT_PURGE_SHIM_DIR = join(dir, "bin");
 for (const key of ["AGENT_PURGE_MODE", "AGENT_PURGE_FORCE", "AGENT_PURGE_PERSONA"]) delete process.env[key];
-const { gitHint, projectInstall, projectStatus, projectUninstall } = await import("../lib/project.mjs");
+const { gitHint, projectInstall, projectStatus, projectUninstall, projectChangePreview, projectOverview } = await import("../lib/project.mjs");
 const { listLedger } = await import("../lib/footprints.mjs");
+const { appendProjectHistory, readProjectHistory } = await import("../lib/project-history.mjs");
 const { applyConfiguration, changeChannel } = await import("../lib/apply.mjs");
 const { createStore } = await import("../lib/personas.mjs");
 const { loadState, patchState } = await import("../lib/state.mjs");
@@ -68,6 +69,116 @@ test("project：已有的 AGENTS.md 只插托管块，off 后逐字节还原并�
 	assert.ok(!off.error, off.error);
 	assert.equal(readFileSync(file, "utf8"), original, "撤销必须逐字节还原原文件");
 	assert.equal(listLedger(root).length, 0, "撤销后账本应清掉这条");
+});
+
+test("project：共享 AGENTS.md 不再被单工具 owner 锁死，删除一方保留另一方的块", () => {
+	const root = join(dir, "shared-file");
+	const proj = join(dir, "shared-project");
+	mkdirSync(proj, { recursive: true });
+	const file = join(proj, "AGENTS.md");
+	const original = "# 项目规则\n\n共享。\n";
+	writeFileSync(file, original);
+
+	const first = projectInstall("pi", { root, active: "共享人设", dir: proj });
+	const second = projectInstall("omp", { root, active: "共享人设", dir: proj });
+	assert.equal(first.error, undefined, first.error);
+	assert.equal(second.error, undefined, second.error);
+	assert.equal(readFileSync(file, "utf8").match(/# >>> agent-purge/g)?.length, 1, "共享文件只能有一个托管块");
+	assert.equal(projectStatus(proj, root).find(row => row.id === "omp").on, true);
+
+	const detached = projectUninstall("pi", { root, dir: proj });
+	assert.equal(detached.action, "detached", JSON.stringify(detached));
+	assert.ok(readFileSync(file, "utf8").includes("共享人设"), "另一个读取方仍需要这个块");
+	assert.equal(projectStatus(proj, root).find(row => row.id === "omp").on, true);
+
+	const last = projectUninstall("omp", { root, dir: proj });
+	assert.ok(!last.error, last.error);
+	assert.equal(readFileSync(file, "utf8"), original);
+	assert.deepEqual(listLedger(root), []);
+});
+
+test("project：写入前文件 SHA 不一致时拒绝覆盖", () => {
+	const root = join(dir, "sha-guard");
+	const proj = join(dir, "sha-project");
+	mkdirSync(proj, { recursive: true });
+	const file = join(proj, "AGENTS.md");
+	writeFileSync(file, "原始内容\n");
+	const before = projectStatus(proj, root).find(row => row.id === "pi").sha;
+	writeFileSync(file, "外部编辑\n");
+	const result = projectInstall("pi", { root, active: "人设", dir: proj, expectSha: before });
+	assert.match(result.error, /外部修改/);
+	assert.equal(readFileSync(file, "utf8"), "外部编辑\n");
+});
+
+test("project：写入预览返回差异但不落盘", () => {
+	const root = join(dir, "preview");
+	const proj = join(dir, "preview-project");
+	mkdirSync(proj, { recursive: true });
+	const file = join(proj, "AGENTS.md");
+	writeFileSync(file, "# 原有内容\n");
+	const preview = projectChangePreview("pi", { dir: proj, active: "预览人设" });
+	assert.equal(preview.error, undefined, preview.error);
+	assert.ok(preview.diff.added > 0);
+	assert.match(preview.diff.text, /\+ .*预览人设|预览人设/);
+	assert.ok(preview.after.includes("预览人设"));
+	assert.equal(readFileSync(file, "utf8"), "# 原有内容\n", "预览不能写盘");
+});
+
+test("project：操作历史按目录过滤并返回最新记录", () => {
+	const root = join(dir, "history-root");
+	const proj = join(dir, "history-project");
+	const other = join(dir, "history-other");
+	mkdirSync(proj, { recursive: true });
+	mkdirSync(other, { recursive: true });
+	appendProjectHistory(root, { dir: proj, file: "AGENTS.md", action: "write", ok: true, persona: "alpha" });
+	appendProjectHistory(root, { dir: other, file: "CLAUDE.md", action: "write", ok: true, persona: "beta" });
+	appendProjectHistory(root, { dir: proj, file: "AGENTS.md", action: "remove", ok: false, persona: "alpha" });
+	const rows = readProjectHistory(root, proj);
+	assert.equal(rows.length, 2);
+	assert.equal(rows[0].action, "remove");
+	assert.equal(rows[0].ok, false);
+	assert.equal(rows[1].action, "write");
+	assert.deepEqual(readProjectHistory(root, join(dir, "missing")), []);
+});
+
+test("project：多项目总览汇总已写入文件与当前目录", () => {
+	const root = join(dir, "overview-root");
+	const first = join(dir, "overview-a");
+	const second = join(dir, "overview-b");
+	mkdirSync(first, { recursive: true });
+	mkdirSync(second, { recursive: true });
+	projectInstall("pi", { root, active: "人设 A", dir: first });
+	projectInstall("claude", { root, active: "人设 B", dir: second });
+	const overview = projectOverview(root, first);
+	assert.equal(overview.length, 2);
+	const current = overview.find(item => item.current);
+	assert.equal(current?.dir, first);
+	assert.equal(current?.written, 1);
+	const other = overview.find(item => item.dir === second);
+	assert.equal(other?.written, 1);
+	assert.equal(other?.files, 7);
+});
+
+test("project：共享文件暂停时保留各自选择，最后一方暂停才撤块", () => {
+	const root = join(dir, "shared-pause");
+	const proj = join(dir, "shared-pause-project");
+	mkdirSync(proj, { recursive: true });
+	const file = join(proj, "AGENTS.md");
+	const original = "原始共享内容\n";
+	writeFileSync(file, original);
+	projectInstall("pi", { root, active: "共享人设", dir: proj });
+	projectInstall("omp", { root, active: "共享人设", dir: proj });
+
+	projectUninstall("pi", { root, dir: proj, keepSelection: true });
+	assert.ok(readFileSync(file, "utf8").includes("共享人设"), "还有一方在用时不能撤块");
+	projectUninstall("omp", { root, dir: proj, keepSelection: true });
+	assert.equal(readFileSync(file, "utf8"), original, "最后一方暂停才还原文件");
+	const rows = projectStatus(proj, root);
+	assert.equal(rows.find(row => row.id === "pi").selected, true);
+	assert.equal(rows.find(row => row.id === "omp").selected, true);
+	assert.equal(rows.find(row => row.id === "pi").on, false);
+	assert.equal(rows.find(row => row.id === "omp").on, false);
+	assert.deepEqual(listLedger(root), []);
 });
 
 test("project：原本不存在的文件，off 后整个删掉而不是留空壳", () => {
@@ -220,6 +331,28 @@ test("project：全局撤销与 clean 从无关目录执行也能清除全部项
 		assert.equal(existsSync(join(other, "AGENTS.md")), false);
 	});
 });
+
+test("project：clean keepProject 只撤系统层，项目块与登记保留", () => {
+	const { root, projects: [a] } = fixture("keep-project");
+	assert.equal(changeChannel(root, { harness: "pi", channel: "project", enabled: true, dir: a }).ok, true);
+	const result = clean(root, { keepProject: true });
+	assert.equal(result.ok, true, JSON.stringify(result.steps));
+	assert.equal(existsSync(join(a, "AGENTS.md")), true);
+	assert.deepEqual(loadState(root).state.armed.pi, ["project"]);
+	assert.deepEqual(loadState(root).state.projectDirs.pi, [a]);
+	assert.deepEqual(listLedger(root).filter(entry => entry.channel !== "project"), []);
+	assert.equal(clean(root).ok, true);
+	assert.equal(existsSync(join(a, "AGENTS.md")), false);
+});
+test("project：仅规则宿主不写 armed，clean 仍按账本撤销", () => {
+	const { root, projects: [a] } = fixture("rules-only-clean");
+	assert.equal(projectInstall("cursor", { root, active: "CURSOR_PERSONA", dir: a }).action, "created");
+	assert.deepEqual(loadState(root).state.armed, {});
+	const result = clean(root);
+	assert.equal(result.ok, true, JSON.stringify(result.steps));
+	assert.equal(existsSync(join(a, "AGENTS.md")), false);
+});
+
 
 test("project：相对目录转换为绝对路径，同一目录重复启用不重复登记", () => {
 	const { root, projects: [a, , other] } = fixture("relative-path");

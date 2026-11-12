@@ -85,12 +85,12 @@ test('UI model: paused resume draft, selection sorting, conservative effect labe
   assert.equal(changed({ a: 1 }, { a: 2 }), true);
   const harnesses = [{ id: 'z', armed: [], found: false }, { id: 'a', armed: [], found: true }, { id: 'b', armed: ['install'] }];
   assert.deepEqual(sortedHarnesses({ harnesses }).map(h => h.id), ['b', 'a']);
-  assert.equal(effectLabel(harnesses[2]), '配置已选择：新开的 b 读取；现有会话尚未确认'); assert.match(effectLabel(harnesses[2], true), /暂停/);
+  assert.equal(effectLabel(harnesses[2]), '配置已写入：新开 b 读取；现有会话还没确认'); assert.match(effectLabel(harnesses[2], true), /暂停/);
   assert.equal(effectLabel({ id: 'c', armed: [], found: false }), '本机没装，装好后再回来开');
   // dsh 的 /purge off 是 profile 级：UI 要能看出哪个形态被暂停了
   assert.match(effectLabel({ id: 'dsh', armed: ['install', 'slash'] }, false, { desktop: { enabled: false } }), /未列出的形态尚未确认/);
   assert.match(effectLabel({ id: 'dsh', profiles: ['desktop', 'web'], armed: ['install', 'slash'] }, false, { desktop: { enabled: false }, web: { enabled: false } }), /已选形态均被/);
-  assert.equal(effectLabel({ id: 'dsh', armed: ['install', 'slash'] }, false, {}), '配置已选择：新开的 dsh 读取；现有会话尚未确认');
+  assert.equal(effectLabel({ id: 'dsh', armed: ['install', 'slash'] }, false, {}), '配置已写入：新开 dsh 读取；现有会话还没确认');
   assert.match(effectLabel({ id: 'pi', armed: ['slash'], auto: false, caps: { hot: { ok: true, needs: 'slash' } } }), /purge on/);
   assert.match(effectLabel({ id: 'pi', armed: ['install'], mode: 'off' }), /这家已关闭/);
   assert.match(scopeSummary({ armed: { a: ['install'], b: [] } }), /已选择 1 个/);
@@ -124,7 +124,8 @@ test('project selection: explicit off stays local while paused, auto off removes
   for (const file of [local, join(other, 'AGENTS.md')]) assert.match(readFileSync(file, 'utf8'), /PERSONA_A/);
   await api('power', { on: false });
   const view = async () => (await api('state')).harnesses.find(h => h.id === 'pi');
-  assert.equal((await view()).projectOn, true, '暂停保留本项目选择');
+  assert.equal((await view()).projectOn, false, '暂停后块已撤下，不能冒充已写入');
+  assert.equal((await view()).projectSelected, true, '暂停仍保留本项目选择');
   await api('arm', { harness: 'pi', channel: 'project', action: 'off' });
   assert.equal((await view()).projectOn, false);
   assert.deepEqual((await view()).armed, ['project'], '别的项目仍被选择');

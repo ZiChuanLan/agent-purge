@@ -1,7 +1,7 @@
 import { test as base, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { isolatedEnv } from '../../lib/environment.mjs';
@@ -53,6 +53,11 @@ const test = base.extend({
   },
 });
 
+const selectTool = async (page, id) => {
+  await page.locator(`.target-row[data-id="${id}"]`).click();
+  await expect(page.locator(`#panel-${id}`)).toBeVisible();
+};
+
 test('issues #1/#6: fresh defaults save without toggling modes; legacy deep link works', async ({ page, app }) => {
   await expect(page.locator('#apply')).toBeEnabled();
   await expect(page.locator('[name=mode][value=replace]')).toBeChecked();
@@ -65,10 +70,10 @@ test('issues #1/#6: fresh defaults save without toggling modes; legacy deep link
   await expect(page.locator('#edit-desc')).toHaveValue(/起步/);
   await expect(page.locator('#edit-body')).not.toHaveValue('');
   await page.getByRole('button', { name: '控制台', exact: true }).click();
-  await page.locator('.launch-settings summary').click();
+  await page.locator('#launch-settings summary').click();
   await page.locator('#default-harness').selectOption('codex');
-  await page.getByRole('button', { name: '保存启动设置' }).click();
-  await expect(page.locator('#default-summary')).toHaveText('codex');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('#default-summary')).toHaveText('Codex');
   const state = JSON.parse(readFileSync(join(app.env.AGENT_PURGE_HOME, 'state.json'), 'utf8'));
   expect(state.default.harness).toBe('codex');
   expect(state.default.mode).toBe('replace');
@@ -108,6 +113,7 @@ test('draft refresh, keyboard update action, unsaved navigation and metadata pre
 });
 
 test('pause, resume and clean preserve user personas and roll back managed rules', async ({ page, app }) => {
+  await selectTool(page, 'pi');
   await page.locator('[data-toggle=pi]').check();
   await expect(page.locator('[data-toggle=pi]')).toBeChecked();
   await page.locator('#power').click();
@@ -127,28 +133,60 @@ test('verification badges distinguish no request, process error, off success and
   await page.route('**/api/verification', route => route.fulfill({ json: { report: { at: '2026-11-02T00:00:00Z', results: [record] } } }));
   await page.locator('#refresh').click();
   await page.locator('#show-all').check();
-  await page.locator('[data-expand=dsh]').click();
-  const drawer = page.locator('.harness-drawer');
-  await expect(drawer).toContainText('未捕获请求');
+  await selectTool(page, 'dsh');
+  const drawer = page.locator('.tool-panel');
+  await expect(drawer).toContainText('没抓到请求');
   await expect(drawer).not.toContainText('实测未命中');
   await expect(drawer).toContainText('headless');
   await expect(drawer).toContainText('不代表当前会话');
   record = { ...record, status: 'error', reason: 'fixture startup failed' };
   await page.locator('#refresh').click();
-  await expect(drawer).toContainText('验证出错');
+  await expect(drawer).toContainText('运行出错');
   await expect(drawer).toContainText('fixture startup failed');
   record = { ...record, status: 'captured', reason: null, modes: [{ mode: 'off', status: 'captured', exitCode: 0, requests: [{ roles: ['system'], markerCount: 0 }] }] };
   await page.locator('#refresh').click();
-  await expect(drawer).toContainText('暂停验证通过');
+  await expect(drawer).toContainText('暂停干净');
   record = { ...record, status: 'mismatch', modes: [{ ...record.modes[0], mode: 'replace', status: 'mismatch' }] };
   await page.locator('#refresh').click();
   await expect(drawer).toContainText('请求未命中');
 });
+test('project rules page writes and removes a managed block', async ({ page, app }) => {
+  await page.getByRole('button', { name: '项目规则', exact: true }).click();
+  await expect(page.locator('#project-title')).toBeVisible();
+  const card = page.locator('.project-card').filter({ hasText: 'AGENTS.md' });
+  await expect(card).toContainText('写入此项目');
+  await card.locator('.project-diff summary').click();
+  await expect(card.locator('.project-diff pre')).toContainText('+ # >>> agent-purge');
+  await page.locator('.project-coverage summary').click();
+  await expect(page.locator('.project-coverage-list')).toContainText('Claude Code');
+  await card.getByRole('button', { name: '写入此项目' }).click();
+  await expect(card.locator('.chip')).toHaveText('已写入');
+  await expect(page.locator('.project-history')).toContainText('写入');
+  await expect(card.locator('.project-after')).toBeVisible();
+  const file = join(app.root, 'AGENTS.md');
+  expect(readFileSync(file, 'utf8')).toContain('# >>> agent-purge');
+  await card.getByRole('button', { name: '移除', exact: true }).click();
+  await expect(card.locator('.chip')).toHaveText('未写入');
+});
+test('rules-only project file writes without an owner selector', async ({ page, app }) => {
+  await page.getByRole('button', { name: '项目规则', exact: true }).click();
+  const card = page.locator('.project-card').filter({ hasText: '.clinerules' });
+  await expect(card).toContainText('写入此项目');
+  await card.getByRole('button', { name: '写入此项目' }).click();
+  await expect(card.locator('.chip')).toHaveText('已写入');
+  const file = join(app.root, '.clinerules');
+  expect(readFileSync(file, 'utf8')).toContain('# >>> agent-purge');
+  await card.getByRole('button', { name: '移除', exact: true }).click();
+  await expect(card.locator('.chip')).toHaveText('未写入');
+  expect(existsSync(file)).toBe(false);
+});
+
+
 
 for (const width of [1440, 768, 390, 320]) {
-  test(`responsive ${width}px: no page overflow; accessible console/library/diagnostics`, async ({ page }, testInfo) => {
+  test(`responsive ${width}px: no page overflow; accessible console/library/project/diagnostics`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
-    for (const [name, route] of [['控制台', 'console'], ['人设库', 'library'], ['验证与诊断', 'diagnostics']]) {
+    for (const [name, route] of [['控制台', 'console'], ['人设库', 'library'], ['项目规则', 'project'], ['测试与记录', 'diagnostics']]) {
       await page.getByRole('button', { name, exact: true }).click();
       if (route === 'library') await page.getByRole('button', { name: /中性模板/ }).click();
       await expect(page.locator(`#page-${route}`)).toBeVisible();

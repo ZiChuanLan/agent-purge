@@ -1,7 +1,7 @@
 // 零依赖 Web 服务：配置台。选默认 harness/mode、管理 persona、常驻安装、探测。
 // 刻意不做"运行"：交互式 harness 属于终端/桌面，Web 只负责选（见 ARCHITECTURE.md）。
 import { createServer } from "node:http";
-import { readFileSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, existsSync, lstatSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,8 @@ import { createStore, isValidId } from "../lib/personas.mjs";
 import { MODES, ARMS, armedOf, dshProfilesOf, loadState, resolveFor, resolveActivation, setPiAuto, setOmpAuto, setDshProfile } from "../lib/state.mjs";
 import { withControlLock } from "../lib/control.mjs";
 import { status as persistStatus } from "../lib/persist.mjs";
-import { projectStatus, projectDirectories } from "../lib/project.mjs";
+import { projectStatus, projectDirectories, projectTargets, projectPreview, projectChangePreview, projectOverview, gitHint, gitHints, projectInstall, projectUninstall } from "../lib/project.mjs";
+import { appendProjectHistory, readProjectHistory } from "../lib/project-history.mjs";
 import { plans } from "../lib/armor.mjs";
 import { shimStatus } from "../lib/shim.mjs";
 import { slashStatus } from "../lib/slashes.mjs";
@@ -142,7 +143,7 @@ async function handle(req, res, ctx = {}) {
 	// web/assets/ 下的真实品牌图标（png/jpg/webp/ico），固定白名单后缀 + 只认单层文件名，不走路径拼接。
 	if (req.method === "GET" && p.startsWith("/assets/")) {
 		const name = p.slice("/assets/".length);
-		const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon' };
+		const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' };
 		const ext = name.slice(name.lastIndexOf('.'));
 		if (!name.includes('/') && !name.includes('..') && Object.hasOwn(mime, ext)) {
 			try {
@@ -194,6 +195,7 @@ async function handle(req, res, ctx = {}) {
 		return send(res, 200, { ok: true, exit: live });
 	}
 	if (req.method === "GET" && p === "/api/state") return send(res, 200, await state(url.searchParams.get("versions") === "1"));
+	if (req.method === "GET" && p === "/api/project") return send(res, 200, projectView(url.searchParams.get("dir")));
 	if (req.method === "GET" && p === "/api/armor") return send(res, 200, armorState());
 	if (req.method === "POST" && p === "/api/apply") return send(res, 200, applyChanges(await body(req)));
 	if (req.method === "POST" && p === "/api/power") return send(res, 200, applyConfiguration(DATA, { enabled: booleanField(await body(req), "on") }));
@@ -209,11 +211,12 @@ async function handle(req, res, ctx = {}) {
 	if (req.method === "POST" && p === "/api/use") return send(res, 200, usePersona(await body(req)));
 	if (req.method === "POST" && p === "/api/install") return send(res, 200, applyInstall(await body(req)));
 	if (req.method === "POST" && p === "/api/arm") return send(res, 200, applyArm(await body(req)));
+	if (req.method === "POST" && p === "/api/project") return send(res, 200, saveProject(await body(req)));
 	if (req.method === "POST" && p === "/api/arm-all") return send(res, 200, applyArmAll(await body(req)));
 	if (req.method === "POST" && p === "/api/clean") {
-		await body(req);
+		const payload = await body(req);
 		const { clean } = await import("../lib/clean.mjs");
-		const resClean = clean(DATA, { all: false, dryRun: false });
+		const resClean = clean(DATA, { all: false, dryRun: false, keepProject: payload?.keepProject === true });
 		return send(res, 200, resClean);
 	}
 	if (req.method === "GET" && p === "/api/update") {
@@ -423,6 +426,10 @@ async function state(withVersions) {
 			chars: m.defaultSystemChars == null ? null : `${m.defaultSystemChars} → ${m.purgedSystemChars ?? "?"}`,
 			version: d.version ?? m.measuredVersion ?? null,
 			residue: m.residue ?? null,
+			// 模式可用性：matrix 声明这家不支持的模式，UI 只置灰、不隐藏（避免“看起来能选其实无效”）
+			modes: Array.isArray(m.modes) ? m.modes : null,
+			modesNote: m.modesNote ?? null,
+			preferredMode: m.preferredMode ?? null,
 			reason: m.reason ?? null,
 			supported: m.class !== "unsupported",
 			oneshot: Boolean(oneshots[id]),
@@ -443,7 +450,8 @@ async function state(withVersions) {
 			personaFrom: eff.personaFrom,
 			modeFrom: eff.modeFrom,
 			// 「本项目」按当前目录的选择显示；暂停撤块后仍可取消选择
-			projectOn: Boolean(projects.get(id)?.selected || projects.get(id)?.on),
+			projectOn: Boolean(projects.get(id)?.on),
+			projectSelected: Boolean(projects.get(id)?.selected),
 			projectFile: caps.project?.file ?? null,
 			projectPath: projects.get(id)?.file ?? null,
 			projectDirs: projectDirectories(DATA, id),
@@ -515,6 +523,130 @@ function applyChanges(payload) {
 	if (payload.resumeMode !== undefined && !["strict", "replace", "append"].includes(payload.resumeMode)) throw httpError(400, "恢复模式无效");
 	if (payload.enabled !== undefined) booleanField(payload, "enabled");
 	return applyConfiguration(DATA, payload);
+}
+
+function resolveProjectDir(input) {
+	const raw = typeof input === "string" && input.trim() ? input.trim() : process.cwd();
+	const dir = resolve(raw);
+	let stat;
+	try { stat = lstatSync(dir); } catch { throw httpError(400, `项目目录不存在：${dir}`); }
+	if (stat.isSymbolicLink()) throw httpError(400, `请选择真实目录，不接受符号链接：${dir}`);
+	if (!stat.isDirectory()) throw httpError(400, `不是文件夹：${dir}`);
+	return dir;
+}
+
+/** 按文件分组，而不是按 harness：同一个 AGENTS.md 会被多家共同读取；文件是共享资源，读取方只做展示。 */
+function projectView(input) {
+	const dir = resolveProjectDir(input);
+	const store = createStore(DATA);
+	const personaId = store.activeId();
+	const picked = store.read(personaId);
+	const groups = new Map();
+	for (const row of projectStatus(dir, DATA)) {
+		const name = projectTargets[row.id];
+		if (!name) continue;
+		if (!groups.has(name)) groups.set(name, { file: name, path: row.file, tools: [], rows: [] });
+		const group = groups.get(name);
+		group.tools.push(row.id);
+		group.rows.push(row);
+	}
+	const hints = gitHints(dir, [...groups.keys()]);
+	const targets = [...groups.values()].map(group => {
+		const onRow = group.rows.find(row => row.on) ?? null;
+		const blockRow = group.rows.find(row => row.hasBlock) ?? null;
+		const selectedRows = group.rows.filter(row => row.selected);
+		const previewOwner = onRow?.id ?? blockRow?.id ?? null;
+		const change = picked ? projectChangePreview(group.rows[0].id, { dir, active: picked.body.trim() }) : null;
+		return {
+			file: group.file,
+			path: group.path,
+			tools: group.tools,
+			readers: group.tools,
+			selected: selectedRows.length > 0,
+			selectedReaders: selectedRows.map(row => row.id),
+			on: Boolean(onRow),
+			hasBlock: Boolean(blockRow),
+			sha: group.rows.find(row => row.sha !== null)?.sha ?? null,
+			preview: previewOwner ? projectPreview(dir, previewOwner) : null,
+			diff: change && !change.error ? change.diff : null,
+			after: change && !change.error ? change.after : null,
+			afterChars: change && !change.error ? change.afterChars : null,
+			afterTruncated: change && !change.error ? change.truncated : false,
+			gitHint: hints.get(group.file) ?? null,
+		};
+	});
+	const key = path => process.platform === "win32" ? path.toLowerCase() : path;
+	const seen = new Set([key(dir)]);
+	const recent = [];
+	for (const path of [process.cwd(), ...Object.keys(projectTargets).flatMap(id => projectDirectories(DATA, id))]) {
+		if (!path || seen.has(key(path))) continue;
+		seen.add(key(path));
+		recent.push(path);
+	}
+	return { dir, cwd: process.cwd(), targets, projects: projectOverview(DATA, dir), history: readProjectHistory(DATA, dir), recent: recent.slice(0, 8), persona: personaId, paused: loadState(DATA).state.default?.mode === "off" };
+}
+
+const RULES_ONLY = new Set(["cursor", "devin", "gemini", "copilot", "amp", "cline", "roo"]);
+
+function projectReaders(file) {
+	return Object.keys(projectTargets).filter(id => projectTargets[id] === file);
+}
+function noteProject(dir, file, action, ok, persona) {
+	try {
+		appendProjectHistory(DATA, { dir, file, action, ok, persona: persona ?? null });
+	} catch { /* 历史记录失败不能影响实际写入结果 */ }
+}
+
+function saveProject(payload) {
+	const dir = resolveProjectDir(payload.dir);
+	const legacyHarness = typeof payload.harness === "string" && Object.hasOwn(projectTargets, payload.harness) ? payload.harness : null;
+	const file = typeof payload.file === "string" && payload.file ? payload.file : (legacyHarness ? projectTargets[legacyHarness] : null);
+	if (!file) throw httpError(400, "缺少规则文件名");
+	const readers = projectReaders(file);
+	if (!readers.length) throw httpError(400, `${file} 不是已登记的项目规则文件`);
+	const rows = projectStatus(dir, DATA).filter(row => projectTargets[row.id] === file);
+	if (payload.sha !== undefined && payload.sha !== null) {
+		const current = rows.find(row => row.sha !== null)?.sha ?? null;
+		if (payload.sha !== current) throw httpError(409, "项目文件在预览后被外部修改，请刷新后再操作");
+	}
+	const enabled = verbOf(payload.action) === "on";
+	if (enabled) {
+		const writer = legacyHarness && readers.includes(legacyHarness)
+			? legacyHarness
+			: readers.find(id => !RULES_ONLY.has(id)) ?? readers[0];
+		if (RULES_ONLY.has(writer)) {
+			const store = createStore(DATA);
+			const picked = store.read(store.activeId());
+			if (!picked) throw httpError(400, "没有可用人设");
+			const result = projectInstall(writer, { root: DATA, active: picked.body.trim(), dir, expectSha: payload.sha });
+			noteProject(dir, file, "write", !result.error, picked.id);
+			return { ok: !result.error, result, view: projectView(dir) };
+		}
+		const cap = capsFor(writer).project;
+		if (!cap?.ok) throw httpError(400, cap?.why ?? "这家不支持项目规则");
+		const result = changeChannel(DATA, { harness: writer, channel: "project", enabled: true, dir, expectSha: payload.sha });
+		noteProject(dir, file, "write", result.status !== "failed", createStore(DATA).activeId());
+		return { ok: result.status !== "failed", result, view: projectView(dir) };
+	}
+	// 文件级移除：先把所有登记过这个目录的读取方都卸掉；最后一个撤销时才还原文件字节。
+	const results = [];
+	for (const row of rows) {
+		if (!row.selected && !row.on) continue;
+		const result = RULES_ONLY.has(row.id)
+			? projectUninstall(row.id, { root: DATA, dir, expectSha: payload.sha })
+			: changeChannel(DATA, { harness: row.id, channel: "project", enabled: false, dir, expectSha: payload.sha });
+		results.push({ id: row.id, ...result });
+	}
+	if (!results.length) {
+		const writer = legacyHarness && readers.includes(legacyHarness) ? legacyHarness : readers[0];
+		const result = RULES_ONLY.has(writer)
+			? projectUninstall(writer, { root: DATA, dir, expectSha: payload.sha })
+			: changeChannel(DATA, { harness: writer, channel: "project", enabled: false, dir, expectSha: payload.sha });
+		results.push({ id: writer, ...result });
+	}
+	const failed = results.filter(result => result.status === "failed" || result.error);
+	noteProject(dir, file, "remove", !failed.length, createStore(DATA).activeId());
+	return { ok: !failed.length, results, view: projectView(dir) };
 }
 function saveDefaults(payload) {
 	const report = applyChanges(payload);

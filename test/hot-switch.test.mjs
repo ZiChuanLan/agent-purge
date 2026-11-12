@@ -97,6 +97,17 @@ test('pi 1.5.x replace strips identity & <docs> while preserving custom <docs>, 
  await commands.purge.handler('reload', { ui: { notify: (msg) => notes.push(msg) } });
  assert.match(notes.at(-1), /已重读/);
 });
+test('pi/omp off cleans residual resident agent-purge block from host system prompt', async () => {
+ state('replace', 'b'); const hooks = {}, commands = {};
+ const ext = (await fromSource(extensionSource(root, 'pi'))).default;
+ ext({ on: (k, v) => hooks[k] = v, registerCommand: (k, v) => commands[k] = v });
+ const resident = '# >>> agent-purge\nRESIDENT XIAOMAJIANG\n# <<< agent-purge\n\nYou are an AI assistant.\nTOOLS';
+ const ctx = { ui: { notify() {} } };
+ await commands.purge.handler('off', ctx);
+ const out = (await hooks.before_agent_start({ systemPrompt: resident })).systemPrompt;
+ assert.equal(out, 'You are an AI assistant.\nTOOLS');
+ assert.doesNotMatch(out, /RESIDENT XIAOMAJIANG/);
+});
 test('pi context: preserves content metadata and user attachments; off removes only own user prefix',async()=>{
  state('append','a',{piUserLayer:true});const hooks={};(await fromSource(extensionSource(root,'pi')+'\n// context')).default({on:(k,v)=>hooks[k]=v,registerCommand(){}});
  const original=[{role:'system',content:[{type:'text',text:'TOOLS',cache_control:{type:'ephemeral'}}]},{role:'user',content:[{type:'text',text:'QUESTION'},{type:'image',source:{data:'Y'}}]}];
