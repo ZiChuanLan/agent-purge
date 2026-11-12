@@ -70,6 +70,10 @@ npx agent-purge web
 | `agent-purge-<version>-setup.exe` | Windows、外部 Node.js 20+ | GUI インストール・アンインストール |
 | `agent-purge-<version>.zip` | Windows、外部 Node.js 20+ | 解凍して利用するポータブル版 |
 | `agent-purge.exe` | Windows x64、ランタイム内蔵 | Node 未導入環境向けのスタンドアロン版 |
+| `agent-purge-<version>-linux-x64` / `-linux-arm64` | 主要 Linux ディストリビューション、ランタイム内蔵 | 単一バイナリ。`chmod +x` でそのまま実行できます |
+| `agent-purge-<version>-linux-<arch>.tar.gz` | 主要 Linux ディストリビューション | `.desktop`、アイコン、root 不要の `install.sh` を含むポータブル版 |
+| `agent-purge-<version>-linux-<arch>.deb` | Debian / Ubuntu 系 | `sudo apt install ./*.deb` で `/usr/bin/agent-purge` とデスクトップエントリを登録 |
+| `agent-purge-<version>-linux-<arch>.AppImage` | 主要 Linux ディストリビューション（生成された場合のみ） | ダブルクリック、または `--appimage-extract-and-run` で起動 |
 
 バイナリは [GitHub Releases](https://github.com/ZiChuanLan/agent-purge/releases) よりダウンロードできます。SSH / WSL などのヘッドレス環境では `agent-purge web --no-open` をご利用ください。Web はローカルループバック（`127.0.0.1`）でのみリッスンします。
 
@@ -130,15 +134,27 @@ agent-purge status
 
 以下は対応エージェントと実際の検証ステータスです。リクエストレベル検証は、分離プロバイダ環境での送信パケット検査によって確認されています。
 
-| エージェント | 検証バージョン | セッション内ホットスイッチ |
-|---|---|---|
-| pi / omp | 1.4.0 / 18.14.1 | 検証済み（動的拡張コールバック） |
-| OpenCode 1.x / 2.x | 1.19.5 / 2.2.5 | 検証済み |
-| DSH (DeepSeek Harness) | 0.2.1-rc.5 | 検証済み（SDK セッション内；Headless / Web / Desktop 全形態キャプチャ完了） |
-| Codex / Claude Code | 0.166.0 / 2.1.316 | 起動エントリ検証済み；ホットスイッチ未検証 |
-| CodeBuddy / Grok | 2.179.0 / 1.0.73 | 起動エントリ検証済み；ホットスイッチ未検証 |
-| Kilo Code | @kilocode/cli 7.8.18 | 全4モード実リクエストキャプチャ完了；system 層でマーカー確認 |
-| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 身元設定（`IDENTITY.md`, `SOUL.md`, `USER.md` および `customPrompt`、国際版は `app/app-config.json` に保存）検証済み；ホットスイッチ未検証 |
+| エージェント / ホスト | 検証バージョン | 主な接管チャネル | セッション内ホットスイッチ | 検証状況と実測メモ |
+|---|---|---|---|---|
+| pi / omp | 1.4.0 / 18.14.1 | セッション拡張 / プラグイン | 対応（`/purge` で切替） | 動的拡張を実測；4モードのキャプチャ検証済み |
+| OpenCode 1.x / 2.x | 1.19.5 / 2.2.5 | プラグイン機構 | 対応（セッション内） | プラグインのマウントを実測 |
+| DSH (DeepSeek Harness) | 0.2.1-rc.5 | 設定 / SDK / プラグイン | 対応（SDK セッション内） | headless / web / desktop 全形態で4モード検証済み |
+| Codex | 0.166.0 | 起動フラグ / ルールファイル | 新規セッションが必要 | 起動エントリ検証済み；固定の system prompt 置換 |
+| Claude Code | 2.1.316 | 起動フラグ / ルールファイル | 新規セッションが必要 | 起動エントリと `CLAUDE.md` を検証；置換・追加に対応 |
+| CodeBuddy / Grok | 2.179.0 / 1.0.73 | 起動フラグ / ルールファイル | 新規セッションが必要 | 起動フラグと設定ルールを検証済み |
+| Qwen Code | 0.27.2 | 起動フラグ (`--system-prompt` / `--append-system-prompt`) | 新規セッションが必要 | 起動フラグ検証済み；全文置換と末尾追加に対応 |
+| Gemini CLI | 0.68.0 | 環境変数 (`GEMINI_SYSTEM_MD`) | 新規セッションが必要 | 実パッケージ検証済み；`PromptProvider` が core system prompt を置換 |
+| Crush | v0.100.0 | グローバルルール (`CRUSH.md`) / AGENTS.md | 新規セッションが必要 | 実リリースで実測；追記はアトミックで可逆 |
+| Continue CLI | 1.5.47 | 起動フラグ (`--rule`) | 新規セッションが必要 | 実インストールで検証；ルール/コンテキストを追加 |
+| Qoder CLI | 1.1.87 | 起動フラグ (`--system-prompt` / `--append-system-prompt`) | 新規セッションが必要 | 実インストールで検証；置換と追加の両入口を確認 |
+| Kimi Code | 2.5.3 | 起動フラグ (`--agent-file`) | 新規セッションが必要 | 実インストールで検証；Markdown 本文が system prompt を置換 |
+| Auggie CLI | 0.37.1 | 起動フラグ (`--rules`) | 新規セッションが必要 | 実インストールで検証；ルール/コンテキストを追加 |
+| Goose | 1.59.0 | 起動フラグ (`session/run --system`) | 新規セッションが必要 | 実リリースで実測；`--system` で追記、BYOK 検証済み |
+| Kiro CLI | 3.2.0 | 起動フラグ (`--agent`) / カスタムエージェント | 新規セッションが必要 | `--agent` とカスタム agent の `prompt` を実測済み |
+| Kilo Code | @kilocode/cli 7.8.18 | 設定ファイル (`code.md`) / AGENTS.md | 新規セッションが必要 | off/strict/replace/append 全4モードを実キャプチャ；system 層マーカー=1 |
+| Antigravity (agy) | CLI 1.5.3 / LS 1.23.x | グローバルルール (`~/.gemini/config/AGENTS.md`) | 新規セッションが必要 | 4モード実キャプチャ済み；`<user_rules>` システム層に注入 |
+| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 設定書き込み (`app-config.json`) | 新規セッションが必要 | 国内版・国際版の両方で書き込みを実測 |
+| PI-Desktop | 0.21.0（ポータブル） | 常駐設定 (`SYSTEM.md`) / プラグイン | 対応（次ターンで反映） | 常駐設定と imported プラグインのホットスイッチを実測 |
 
 詳細な互換性情報および制限事項は [docs/compatibility.md](docs/compatibility.md) をご参照ください。
 

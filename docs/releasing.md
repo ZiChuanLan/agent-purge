@@ -44,6 +44,18 @@ ZIP 里的 `agent-purge.exe` 是薄启动器，**不是**独立 EXE。安装器�
 
 产物未做 Apple `codesign` 签名与 `notarytool` 公证，首次打开会触发 Gatekeeper 提示（右键「打开」或 `xattr -cr` 放行）。
 
+
+## Linux 构建
+
+`npm run build:linux`（也可在任意 Linux 上本地执行，正式发布由 `.github/workflows/release.yml` 的 `build_linux` 在 `ubuntu-latest` runner 自动执行）用 Bun 交叉编译 `linux-x64` / `linux-arm64` 单文件二进制，本机架构会真实跑一次 `smoke`（`--help`、`status`、`--serve` 静态资源与版本号），再产出：
+
+- `dist/agent-purge-<版本>-linux-<架构>`：自带运行时的单文件二进制
+- `dist/agent-purge-<版本>-linux-<架构>.tar.gz`：便携包，含 `.desktop`、图标、`LICENSE`、`README` 与免 root 的 `install.sh`
+- `dist/agent-purge-<版本>-linux-<架构>.deb`：`dpkg-deb` 构建并回读校验元数据与文件清单，安装到 `/opt/agent-purge` 并注册 `/usr/bin` 入口
+- `dist/agent-purge-<版本>-linux-<架构>.AppImage`：仅在 runner 上能取到 `appimagetool` 时生成，不作强制要求
+- `dist/linux-manifest.json`：上述产物的 SHA-256 汇总
+
+可用 `--native-only` 只构建当前架构，`--no-deb` / `--no-appimage` 关闭对应产物。`.deb` 的维护者字段可用 `AGENT_PURGE_MAINTAINER` 覆盖。
 ## 安装验收
 
 `scripts/check-installer.ps1` 默认只接受临时 Windows Actions runner。本机验收需要明确使用：
@@ -64,7 +76,7 @@ ZIP 里的 `agent-purge.exe` 是薄启动器，**不是**独立 EXE。安装器�
 
 ## CI
 
-- `test.yml`：Windows / Ubuntu / macOS × Node 20 / 22 / 24，tarball 安装，以及三浏览器 UI 检查。
+- `test.yml`：Windows / Ubuntu / macOS × Node 20 / 22 / 24，tarball 安装，三浏览器 UI 检查，以及 Ubuntu 上的 `build:linux` 产物构建与上传。
 - `release-check.yml`：Windows 构建、ZIP/EXE、安装卸载、校验值和候选包 artifact。
 - `release.yml`：版本 tag 或手动触发的正式发布流程；先跑完整测试与打包，再发布 npm 和 GitHub Release。
 - Actions 固定到 commit SHA；构建任务只读，只有 publish job 获得 `contents: write` 和 `id-token: write`。
@@ -88,7 +100,7 @@ git push origin v0.2.11
 tag 推送会触发 `release.yml`：
 
 1. `verify`：Node 24 上 `npm ci`、`check:repo`、全部测试、`test:package`。
-2. `build` / `build_mac`：分别在 Windows 上构建 ZIP/EXE/setup 并跑安装验收，以及在 `macos-latest` 上构建 arm64/x64 未签名 `.dmg`；汇总产物、校验和与 npm tarball。
+2. `build` / `build_mac` / `build_linux`：分别在 Windows 上构建 ZIP/EXE/setup 并跑安装验收、在 `macos-latest` 上构建 arm64/x64 未签名 `.dmg`、在 `ubuntu-latest` 上构建 Linux 二进制 / `.tar.gz` / `.deb`（AppImage 可选）；汇总产物、校验和与 npm tarball。
 3. `publish`：校验 tag 与版本一致；`npm publish --provenance`（已存在的同版本会跳过）；创建 GitHub Release 并上传附件。
 
 需要重跑时使用 Actions 的 `workflow_dispatch`，输入已存在的 tag；发布是幂等的，不会重复上传同版本 npm 包，Release 附件使用 `--clobber` 覆盖。

@@ -13,7 +13,7 @@ const BINARY_OUTPUT = /\.(?:exe|dll|tgz|zip|log|pyc)$/i;
 export function publicationProblem(file, { distribution = false, size = 0 } = {}) {
   const name = file.replaceAll('\\', '/');
   if (PRIVATE_ROOTS.test(name) || GENERATED.test(name) ||
-      /^(?:state\.json|\.build-entry\.mjs)$/.test(name) ||
+      /^(?:state\.json|\.build-entry\.mjs|\.build-linux-entry\.mjs)$/.test(name) ||
       /^web\/shots\//.test(name) || /^docs\/evidence\//.test(name) ||
       name === 'magpie-plugin/page/personas.js') return '本机数据或生成产物';
   if (/(?:^|\/)\.env(?:\..*)?$/.test(name) && !name.endsWith('.env.example')) return '本地环境变量文件';

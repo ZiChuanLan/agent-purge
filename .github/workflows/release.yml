@@ -118,8 +118,46 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+
+  build_linux:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.4'
+      - run: npm ci --ignore-scripts
+      # AppImage 只是可选项：下载失败时脚本会跳过，tar.gz 与 .deb 不受影响。
+      - name: Fetch appimagetool (optional)
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL --retry 3 --connect-timeout 20 -o "$HOME/.local/bin/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            || { echo "appimagetool 获取失败，本次跳过 AppImage"; exit 0; }
+          chmod +x "$HOME/.local/bin/appimagetool"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: npm run build:linux
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets-linux
+          path: |
+            dist/agent-purge-*-linux-*
+            dist/linux-manifest.json
+          if-no-files-found: error
+          retention-days: 14
   publish:
-    needs: [build, build_mac]
+    needs: [build, build_mac, build_linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -148,6 +186,17 @@ jobs:
           (
             cd release-assets/dist
             sha256sum agent-purge-"${RELEASE_TAG#v}"-darwin-*.dmg >> SHA256SUMS.txt
+          )
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-assets-linux
+          path: release-assets/dist
+      - name: Append Linux checksums
+        run: |
+          set -euo pipefail
+          (
+            cd release-assets/dist
+            sha256sum agent-purge-"${RELEASE_TAG#v}"-linux-* >> SHA256SUMS.txt
           )
       - name: Verify tag and package version
         env:
@@ -189,12 +238,24 @@ jobs:
               --title "agent-purge v$VERSION" \
               "${NOTES_ARGS[@]}"
           fi
-          gh release upload "$RELEASE_TAG" \
-            "release-assets/dist/agent-purge-$VERSION.zip" \
-            "release-assets/dist/agent-purge-$VERSION-setup.exe" \
-            "release-assets/dist/agent-purge.exe" \
-            "release-assets/dist/agent-purge-$VERSION-darwin-arm64.dmg" \
-            "release-assets/dist/agent-purge-$VERSION-darwin-x64.dmg" \
-            "release-assets/dist/standalone-manifest.json" \
-            "release-assets/dist/SHA256SUMS.txt" \
-            --clobber
+          ASSETS=(
+            "release-assets/dist/agent-purge-$VERSION.zip"
+            "release-assets/dist/agent-purge-$VERSION-setup.exe"
+            "release-assets/dist/agent-purge.exe"
+            "release-assets/dist/agent-purge-$VERSION-darwin-arm64.dmg"
+            "release-assets/dist/agent-purge-$VERSION-darwin-x64.dmg"
+            "release-assets/dist/agent-purge-$VERSION-linux-x64"
+            "release-assets/dist/agent-purge-$VERSION-linux-arm64"
+            "release-assets/dist/agent-purge-$VERSION-linux-x64.tar.gz"
+            "release-assets/dist/agent-purge-$VERSION-linux-arm64.tar.gz"
+            "release-assets/dist/agent-purge-$VERSION-linux-x64.deb"
+            "release-assets/dist/agent-purge-$VERSION-linux-arm64.deb"
+            "release-assets/dist/standalone-manifest.json"
+            "release-assets/dist/linux-manifest.json"
+            "release-assets/dist/SHA256SUMS.txt"
+          )
+          # AppImage 依赖 runner 上能否取到 appimagetool，有产物才上传。
+          for image in release-assets/dist/agent-purge-"$VERSION"-linux-*.AppImage; do
+            [ -e "$image" ] && ASSETS+=("$image")
+          done
+          gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber

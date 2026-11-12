@@ -38,6 +38,7 @@
     "build:setup": "node scripts/build-js.mjs && node scripts/build-setup.mjs",
     "build:exe": "node scripts/build-exe.mjs",
     "build:dmg": "node scripts/build-dmg.mjs",
+    "build:linux": "node scripts/build-linux.mjs",
     "web": "node bin/agent-purge.mjs web",
     "matrix": "node bin/agent-purge.mjs matrix",
     "detect": "node bin/agent-purge.mjs detect",

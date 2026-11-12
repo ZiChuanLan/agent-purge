@@ -73,10 +73,14 @@ agent-purge web
 | `agent-purge-<版本>.zip` | Windows，外部 Node.js 20+ | 解压后使用 |
 | `agent-purge.exe` | Windows x64，自带运行时 | 无需另装 Node 的独立便携版 |
 | `agent-purge-<版本>-darwin-arm64.dmg` / `x64.dmg` | macOS 12+（Apple Silicon / Intel，自带运行时） | 未签名 `.app` 磁盘镜像，拖入 `/Applications` 后首次需右键「打开」或 `xattr -cr` 放行 |
+| `agent-purge-<版本>-linux-x64` / `-linux-arm64` | 主流 Linux 发行版（自带运行时） | 单文件二进制，`chmod +x` 后直接运行 |
+| `agent-purge-<版本>-linux-<架构>.tar.gz` | 主流 Linux 发行版 | 便携包，含 `.desktop`、图标与免 root 的 `install.sh` |
+| `agent-purge-<版本>-linux-<架构>.deb` | Debian / Ubuntu 及衍生版 | `sudo apt install ./*.deb`，注册 `/usr/bin/agent-purge` 与桌面入口 |
+| `agent-purge-<版本>-linux-<架构>.AppImage` | 主流 Linux 发行版（存在时才有） | 双击或用 `--appimage-extract-and-run` 直接启动控制台 |
 
 下载附件以实际 [GitHub Releases](https://github.com/ZiChuanLan/agent-purge/releases) 为准；未发布的版本没有附件。请核对 SHA-256 和签名状态，未签名程序可能出现系统提示。ZIP 中的 EXE 是薄启动器，不是自带运行时的独立版。
 
-SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux 使用 npm 或源码入口，macOS 可用 npm / 源码或 `.dmg` 镜像（`.dmg` 未经 Apple 签名与公证）。平台验证范围见[兼容性说明](docs/compatibility.md)。
+SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux 可用 npm / 源码入口或 Release 里的二进制、`.tar.gz`、`.deb`（AppImage 随 runner 能力可选生成），macOS 可用 npm / 源码或 `.dmg` 镜像（`.dmg` 未经 Apple 签名与公证）。平台验证范围见[兼容性说明](docs/compatibility.md)。
 
 控制台右上角的版本角标点开就是升级入口，按安装形态自动选路：独立 EXE 下载并就地热替换、npm 全局安装调 `npm install -g`、**源码检出（`git clone` 后直接 `node bin/agent-purge.mjs`）在安装目录执行 `git pull --ff-only`**，不下载任何发布产物。源码检出的「有没有更新」按上游提交算，版本号没变也会提示；工作区有未提交改动、处于游离 HEAD 或分支没有上游时一律拒绝并说明原因。
 
@@ -161,27 +165,27 @@ agent-purge status
 
 以下为支持范围与当前验证程度；请求级验证只覆盖表中明确说明的宿主，不是对所有版本的兼容承诺。
 
-| 执行器 | 已验证版本 | 同会话热切 |
-|---|---|---|
-| pi / omp | 1.4.0 / 18.14.1 | 已验证（动态扩展） |
-| OpenCode 1.x / 2.x | 1.19.5 / 2.2.5 | 已验证 |
-| DSH | 0.2.1-rc.5 | 已验证（SDK 同会话；headless/web/desktop 三形态四模式已抓） |
-| Codex / Claude Code | 0.166.0 / 2.1.316 | 启动入口已验证；热切未验证 |
-| CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口已验证；热切未验证 |
-| Qwen Code | 0.27.2 | `--system-prompt` / `--append-system-prompt` 参数入口已验证；请求抓包未做 |
-| Gemini CLI | 0.68.0 | `GEMINI_SYSTEM_MD` 指向人设文件，PromptProvider 替换 core system prompt；请求抓包未做 |
-| Crush | v0.100.0 | 本机实测；全局 `CRUSH.md` 是 system prompt 的追加上下文，写托管块可逆；请求抓包未做 |
-
-| Continue CLI | 1.5.47 | 真实安装 `@continuedev/cli`；`--rule` 追加规则/上下文，不是 core system 替换；未抓包 |
-| Qoder CLI | 1.1.87 | 真实安装 `@qoder-ai/qodercli`；`--system-prompt` / `--append-system-prompt` 两个入口已验证，未登录、未抓包 |
-| Kimi Code | 2.5.3 | 真实安装 `@moonshot-ai/kimi-code`；`--agent-file` 的 Markdown 正文作为 system prompt，未登录、未抓包 |
-| Auggie CLI | 0.37.1 | 真实安装 `@augmentcode/auggie`；`--rules` 追加规则/上下文，不是 core system 替换；未抓包 |
-| Goose | 1.59.0 | 真实下载 Windows release；`session --system` / `run --system` 追加系统指令；本机无 provider，真实 prompt 被拦 |
-| Kiro CLI | 3.2.0 | `--agent` / `--no-interactive` 参数入口已验证；自定义 agent 的 `prompt` 按官方文档作为 system prompt，未登录校验、未抓包 |
-| Kilo Code | @kilocode/cli 7.8.18 | off/strict/replace/append 四模式真实抓包；system 层 marker=1 |
-| Antigravity（App + CLI `agy`） | CLI 1.5.3 / 语言服务 1.23.x | off/strict/replace/append 四模式真实抓包；写 `~/.gemini/config/AGENTS.md`，落 system 层 `<user_rules>`；`<identity>` 段仍在，靠规则段优先级压住 |
-| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 身份上下文已验证（国际版写 `app/app-config.json`）；热切未验证 |
-| PI-Desktop | 0.21.0（便携版） | 已实测：常驻写 `~/.pi/agent/SYSTEM.md`；热切装在 `plugins/imported` 的 imported 插件里，同一会话换人设/`/purge off` 下一轮生效 |
+| 执行器 / 宿主 | 已验证版本 | 主要接管通道 | 同会话热切 | 验证状态与实测说明 |
+|---|---|---|---|---|
+| pi / omp | 1.4.0 / 18.14.1 | 会话扩展 / 插件 | 支持（`/purge` 热切） | 动态扩展已实测；四模式抓包通过 |
+| OpenCode 1.x / 2.x | 1.19.5 / 2.2.5 | 插件机制 | 支持（同会话注入） | 插件挂载已实测 |
+| DSH (DeepSeek Harness) | 0.2.1-rc.5 | 配置 / SDK / 插件 | 支持（SDK 同会话） | headless/web/desktop 三形态四模式已抓包 |
+| Codex | 0.166.0 | 启动参数 / 规则文件 | 需新会话 | 启动入口已验证；固定替换身份 |
+| Claude Code | 2.1.316 | 启动参数 / 规则文件 | 需新会话 | 启动入口与 `CLAUDE.md` 规则已验证；支持替换与追加 |
+| CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口 / 规则文件 | 需新会话 | 启动参数与配置文件已验证 |
+| Qwen Code | 0.27.2 | 启动参数 (`--system-prompt` / `--append-system-prompt`) | 需新会话 | 启动参数已验证，支持整段覆盖与末尾追加；长人设受命令行长度限制 |
+| Gemini CLI | 0.68.0 | 环境变量 (`GEMINI_SYSTEM_MD`) | 需新会话 | 真实包 `PromptProvider` 替换 core system prompt 已验证 |
+| Crush | v0.100.0 | 全局规则 (`CRUSH.md`) / AGENTS.md | 需新会话 | 真实 Windows release 实测；追加系统上下文，写托管块原子可逆 |
+| Continue CLI | 1.5.47 | 启动参数 (`--rule`) | 需新会话 | 真实安装 `@continuedev/cli`；`--rule` 追加规则/上下文 |
+| Qoder CLI | 1.1.87 | 启动参数 (`--system-prompt` / `--append-system-prompt`) | 需新会话 | 真实安装 `@qoder-ai/qodercli`；两个参数入口已验证，支持替换与追加 |
+| Kimi Code | 2.5.3 | 启动参数 (`--agent-file`) | 需新会话 | 真实安装 `@moonshot-ai/kimi-code`；Markdown 正文作为 system prompt 替换 |
+| Auggie CLI | 0.37.1 | 启动参数 (`--rules`) | 需新会话 | 真实安装 `@augmentcode/auggie`；`--rules` 追加规则/上下文 |
+| Goose | 1.59.0 | 启动参数 (`session/run --system`) | 需新会话 | 真实 release 实测；`--system` 追加系统指令，BYOK 跑通 |
+| Kiro CLI | 3.2.0 | 启动参数 (`--agent`) / Custom Agent | 需新会话 | `--agent` 参数与自定义 agent `prompt` 字段替换已实测 |
+| Kilo Code | @kilocode/cli 7.8.18 | 配置覆盖 (`code.md`) / AGENTS.md | 需新会话 | off/strict/replace/append 四模式真实抓包；system 层 marker=1 |
+| Antigravity (agy) | CLI 1.5.3 / 语言服务 1.23.x | 全局规则 (`~/.gemini/config/AGENTS.md`) | 需新会话 | 四模式真实抓包；落 system 层 `<user_rules>`，规则段优先级压住 |
+| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 配置文件写入 (`app-config.json`) | 需新会话 | 国际版与国内版上下文写入已实测 |
+| PI-Desktop | 0.21.0（便携版） | 常驻配置 (`SYSTEM.md`) / 导入插件 | 支持（插件同会话下一轮生效） | 常驻配置写入与 imported 插件热切已实测 |
 
 Cursor、Devin CLI、Copilot CLI、Amp、Cline、Roo Code、Gemini CLI、Qwen Code、Crush 的规则文件已接入「规则文件」页；其中 Cursor / Devin / Copilot / Amp / Cline / Roo 只写规则，不替换主 agent 的 system prompt。Muse Code 目前没有可安装的 CLI，暂不接入。
 

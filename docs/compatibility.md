@@ -46,6 +46,7 @@
 | Windows ZIP / 独立 EXE | 解压后运行；独立 EXE 在无 Node 的 PATH 下运行 | 全新操作系统或已签名发行 |
 | Windows 安装器 | 临时目录连续三轮安装、重装、原生启动器、冲突阻止卸载及数据保留 | 干净 VM、跨版本升级、所有目录 |
 | macOS | 已配置 CI 矩阵 | 本轮没有 macOS 实机或远端运行证据 |
+| Linux 发行包 | Ubuntu 24.04 上构建 `linux-x64` / `linux-arm64` 二进制、`.tar.gz`、`.deb`；`.deb` 实际 `dpkg -i` 安装、运行 `--help` / `status` 后 `dpkg -r` 干净卸载；便携包的 `install.sh` 装到 `~/.local` 后可执行；独立二进制在 PATH 无 Node 时运行 | 原生 Linux 桌面环境与多数发行版的桌面启动器；AppImage 取决于 runner 能否取到 appimagetool |
 
 Linux 上的 Windows 参数桥接测试明确跳过。CI 矩阵定义不等于远端执行成功，必须核对对应提交。
 
