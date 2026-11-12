@@ -54,6 +54,49 @@ for(const harness of ['pi','omp']) test(`${harness}: generated extension same in
  await commands.purge.handler('on',ctx);assert.match(JSON.stringify((await hooks.before_agent_start({systemPrompt:host})).systemPrompt),/VERSION B/);
  state('replace','b',{armed:{}});assert.deepEqual((await hooks.before_agent_start({systemPrompt:host})).systemPrompt,host);
 });
+test('pi 1.5.x replace strips identity & <docs> while preserving custom <docs>, supports {{cwd}} & no-op off skip', async () => {
+ const pi152 = [
+  'You are a coding assistant running inside pi, a coding agent harness. Help users inspect files, run commands, and modify code.',
+  '<tools>\n- read: Read file\n</tools>',
+  '<rules>\n- Be concise in your responses\n</rules>',
+  '<docs>\nPi documentation (read only when the user asks about the harness itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: C:/pi/README.md\n- Before implementing harness changes, read the relevant docs and examples in full, following related cross-references.\n</docs>',
+  '<project_context>\n<docs>USER CUSTOM DOCS</docs>\n</project_context>',
+  '<cwd>\nH:/WorkSpace\n</cwd>',
+ ].join('\n\n');
+ writeFileSync(join(root, 'personas', 'cwdp.md'), 'PERSONA IN {{cwd}}');
+ state('replace', 'cwdp');
+ const hooks = {}, commands = {}, notes = [];
+ (await fromSource(extensionSource(root, 'pi') + '\n// pi152')).default({
+  on: (k, v) => hooks[k] = v,
+  registerCommand: (k, v) => commands[k] = v,
+ });
+ const replaced = (await hooks.before_agent_start({ systemPrompt: pi152, systemPromptOptions: { cwd: 'H:\\WorkSpace\\proj' } })).systemPrompt;
+ assert.ok(replaced.startsWith('PERSONA IN H:/WorkSpace/proj'), replaced);
+ assert.doesNotMatch(replaced, /coding assistant running inside pi/);
+ assert.doesNotMatch(replaced, /Pi documentation \(read only/);
+ assert.match(replaced, /<tools>/);
+ assert.match(replaced, /<rules>/);
+ assert.match(replaced, /<docs>USER CUSTOM DOCS<\/docs>/);
+ assert.match(replaced, /<cwd>/);
+ assert.doesNotMatch(replaced, /<\/rules>\n\n\n+<project_context>/);
+
+ // 旧版无 <docs> 标签的裸文本同样切除
+ const barePi = 'You are an expert coding assistant operating inside pi, a coding agent harness.\n\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n\nProject-specific instructions:';
+ const bareOut = (await hooks.before_agent_start({ systemPrompt: barePi })).systemPrompt;
+ assert.doesNotMatch(bareOut, /Pi documentation \(read only/);
+ assert.match(bareOut, /Project-specific instructions:/);
+
+ // 切回 off：带 systemPromptOptions 且未改动宿主时不返回 systemPrompt（避免触发 forceSystemPrompt）
+ state('off', 'cwdp');
+ const restored = (await hooks.before_agent_start({ systemPrompt: replaced, systemPromptOptions: { cwd: 'H:/WorkSpace/proj' } })).systemPrompt;
+ assert.equal(restored, pi152);
+ const noop = await hooks.before_agent_start({ systemPrompt: pi152, systemPromptOptions: { cwd: 'H:/WorkSpace/proj' } });
+ assert.equal(noop, undefined);
+
+ // /purge reload 给明确回显
+ await commands.purge.handler('reload', { ui: { notify: (msg) => notes.push(msg) } });
+ assert.match(notes.at(-1), /已重读/);
+});
 test('pi context: preserves content metadata and user attachments; off removes only own user prefix',async()=>{
  state('append','a',{piUserLayer:true});const hooks={};(await fromSource(extensionSource(root,'pi')+'\n// context')).default({on:(k,v)=>hooks[k]=v,registerCommand(){}});
  const original=[{role:'system',content:[{type:'text',text:'TOOLS',cache_control:{type:'ephemeral'}}]},{role:'user',content:[{type:'text',text:'QUESTION'},{type:'image',source:{data:'Y'}}]}];
