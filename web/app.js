@@ -199,6 +199,18 @@ function render() {
   $('persona-select').value = draft.persona;
   $('persona-select').disabled = false;
 
+  const projectPersonaSelect = $('project-persona-select');
+  if (projectPersonaSelect) {
+    const activePersona = state.personas.find(item => item.id === state.active);
+    const keepVal = rulePersona && state.personas.some(item => item.id === rulePersona) ? rulePersona : '';
+    projectPersonaSelect.replaceChildren(
+      new Option(`跟随当前人设（${personaName(activePersona)}）`, ''),
+      ...state.personas.map(item => new Option(`${personaName(item)} · ${fmt(item.chars)} 字`, item.id))
+    );
+    projectPersonaSelect.value = keepVal;
+    rulePersona = keepVal;
+  }
+
   document.querySelectorAll('[name=mode]').forEach(el => { el.checked = el.value === draft.mode; });
 
   const defaults = $('default-harness');
@@ -773,12 +785,24 @@ async function loadCapture() {
   } catch (error) { $('capture-results').textContent = `报告读取失败：${error.message}`; }
 }
 
-/* ---------------- project rules ---------------- */
+/* ---------------- project & global rules ---------------- */
+let ruleScope = 'project';
+let rulePersona = '';
+
 async function loadProject(dir = '') {
-  $('project-targets').replaceChildren(empty('正在读取项目规则…'));
+  $('project-targets').replaceChildren(empty('正在读取规则文件…'));
+  $('project-dir-wrap').hidden = ruleScope === 'global';
+  $('project-scope-heading').textContent = ruleScope === 'global' ? '各工具全局规则文件' : '当前目录的规则文件';
+  $('project-scope-desc').textContent = '人设以托管块追加在原文件末尾（append），保留原有规则，随时可移除';
+  document.querySelectorAll('[name="rule-scope"]').forEach(el => { el.checked = el.value === ruleScope; });
   try {
-    project = await api(`project${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`);
-    $('project-dir').value = project.dir;
+    const params = new URLSearchParams();
+    if (ruleScope === 'global') params.set('scope', 'global');
+    else if (dir) params.set('dir', dir);
+    if (rulePersona) params.set('persona', rulePersona);
+    const qs = params.toString();
+    project = await api(`project${qs ? `?${qs}` : ''}`);
+    if (project.dir) $('project-dir').value = project.dir;
     renderProject();
   } catch (error) {
     project = null;
@@ -788,8 +812,10 @@ async function loadProject(dir = '') {
 
 function renderProject() {
   if (!project) return;
+  const scope = project.scope === 'global' ? 'global' : 'project';
   const persona = state?.personas?.find(p => p.id === project.persona);
-  const projects = project.projects?.length ? project.projects : project.recent.map(dir => ({ dir, current: dir === project.dir, files: 0, written: 0 }));
+  const selectedPersonaTitle = persona ? personaName(persona) : '当前人设';
+  const projects = scope === 'global' ? [] : (project.projects?.length ? project.projects : project.recent.map(dir => ({ dir, current: dir === project.dir, files: 0, written: 0 })));
   $('project-recent').replaceChildren(...projects.map(item =>
     node('button', {
       type: 'button',
@@ -808,20 +834,34 @@ function renderProject() {
     const hasBlock = Boolean(target.hasBlock);
     const pending = !on && Boolean(target.selected) && project.paused;
     const blocked = hasBlock && !on;
-    const canWrite = !on && !hasBlock && !project.paused && Boolean(project.persona) && readers.length > 0;
+    const canWrite = !hasBlock && !project.paused && Boolean(project.persona) && readers.length > 0;
+    const canUpdate = on && !project.paused && Boolean(project.persona) && target.writtenPersona !== project.persona;
     const action = on || pending ? 'off' : 'on';
-    const label = on ? '移除' : pending ? '取消选择' : blocked ? '处理现有块' : '写入此项目';
+    const writeLabel = scope === 'global' ? '写入全局文件' : '写入此项目';
+    const label = on ? '移除' : pending ? '取消选择' : blocked ? '处理现有块' : writeLabel;
     const disableAction = blocked || (!on && !pending && !canWrite);
     const actionButton = node('button', {
       type: 'button',
       class: `btn ${on || pending ? 'btn-ghost' : 'btn-ink'}`,
       'data-project-action': action,
       'data-project-file': target.file,
+      'data-project-id': target.id || '',
       disabled: disableAction
     }, label);
-    const status = on ? '已写入' : blocked ? '归属不明' : pending ? '已暂停' : target.selected ? '待写入' : '未写入';
+    const updateButton = canUpdate ? node('button', {
+      type: 'button',
+      class: 'btn btn-primary',
+      'data-project-action': 'on',
+      'data-project-file': target.file,
+      'data-project-id': target.id || ''
+    }, `更新为「${selectedPersonaTitle}」`) : null;
+    const writtenLabel = target.writtenPersonaName ? `已写入 · ${target.writtenPersonaName}` : '已写入';
+    const status = on ? writtenLabel : blocked ? '归属不明' : pending ? '已暂停' : target.selected ? '待写入' : '未写入';
     const diff = target.diff;
     const diffSummary = diff ? (diff.added || diff.removed ? `查看写入差异 · +${diff.added} / -${diff.removed}` : '查看写入差异 · 没有变化') : null;
+    const scopeNote = on
+      ? `已写入${target.writtenPersonaName ? `「${target.writtenPersonaName}」` : ''}，追加在原文件末尾（append），随时可移除。`
+      : '保留原有规则并在末尾追加（append）托管块，对所有读取方生效。';
     return node('article', { class: 'project-card', 'data-project-card': target.file },
       node('div', { class: 'project-card-head' },
         node('div', {},
@@ -831,8 +871,8 @@ function renderProject() {
         chip(status, on ? 'is-on' : blocked || pending ? 'is-warn' : '')
       ),
       node('p', { class: 'project-readers' }, readers.length ? `读取方：${readers.map(id => harnessTitle(id)).join('、')}` : '没有已登记的工具读取这个文件'),
-      node('p', { class: 'project-scope-note' }, on ? '这段内容对所有读取方生效。' : '写入一次，所有读取方共享同一个托管块。'),
-      node('div', { class: 'project-controls' }, actionButton),
+      node('p', { class: 'project-scope-note' }, scopeNote),
+      node('div', { class: 'project-controls' }, updateButton, actionButton),
       target.gitHint && (on || hasBlock) ? node('p', { class: 'hint' }, target.gitHint) : null,
       blocked ? node('p', { class: 'hint' }, '文件里有 agent-purge 托管块，但账本里找不到归属；先手动核对，避免误删。') : null,
       !on && !hasBlock && !project.persona ? node('p', { class: 'hint' }, '先在「控制台」或「人设库」选一份人设，才能写入。') : null,
@@ -885,7 +925,7 @@ function renderProject() {
   ) : null;
   $('project-targets').replaceChildren(
     node('p', { class: 'project-persona' },
-      persona ? `使用人设：${personaName(persona)}` : '还没有选中人设；项目块只能预览，不能写入。'
+      persona ? `当前待写入人设：${personaName(persona)}（${rulePersona ? '本页指定' : '跟随控制台'}）` : '还没有选中人设；规则文件只能预览，不能写入。'
     ),
     ...cards,
     coverage,
@@ -893,7 +933,7 @@ function renderProject() {
   );
 }
 /* ---------------- navigation ---------------- */
-const pageFromHash = () => ({ personas: 'library', overview: 'console' }[location.hash.slice(1)] || location.hash.slice(1) || 'console');
+const pageFromHash = () => ({ personas: 'library', overview: 'console', rules: 'project' }[location.hash.slice(1)] || location.hash.slice(1) || 'console');
 async function navigate(page, { replace = false, focus = true } = {}) {
   if (!['console', 'library', 'diagnostics', 'project'].includes(page)) page = 'console';
   if (activePage === 'library' && page !== 'library' && !confirmDiscard()) {
@@ -910,7 +950,7 @@ async function navigate(page, { replace = false, focus = true } = {}) {
   if (replace || location.hash !== `#${page}`) history[replace ? 'replaceState' : 'pushState'](null, '', `#${page}`);
   if (focus) $('main').focus({ preventScroll: true });
   if (page === 'diagnostics') await loadCapture();
-  if (page === 'project') await loadProject(project?.dir || '');
+  if (page === 'project') await loadProject(ruleScope === 'project' ? (project?.dir || '') : '');
 }
 window.addEventListener('hashchange', () => navigate(pageFromHash(), { replace: true }));
 document.querySelectorAll('[data-page]').forEach(el => el.addEventListener('click', () => navigate(el.dataset.page)));
@@ -926,19 +966,36 @@ $('project-recent').addEventListener('click', e => {
   const chip = e.target.closest('[data-project-dir]');
   if (chip) loadProject(chip.dataset.projectDir);
 });
+document.querySelectorAll('[name="rule-scope"]').forEach(el => el.addEventListener('change', () => {
+  ruleScope = el.value === 'global' ? 'global' : 'project';
+  loadProject(ruleScope === 'project' ? (project?.dir || '') : '');
+}));
+$('project-persona-select').addEventListener('change', e => {
+  rulePersona = e.target.value;
+  loadProject(ruleScope === 'project' ? (project?.dir || '') : '');
+});
 $('project-targets').addEventListener('click', e => {
   const btn = e.target.closest('[data-project-action]');
   if (!btn || btn.disabled || !project) return;
   const file = btn.dataset.projectFile;
+  const id = btn.dataset.projectId || '';
   const action = btn.dataset.projectAction;
+  const scope = project.scope === 'global' ? 'global' : 'project';
   operation(async () => {
-    const sha = project?.targets?.find(t => t.file === file)?.sha ?? null;
-    const result = await api('project', { dir: project.dir, file, action, sha });
+    const sha = project?.targets?.find(t => t.file === file && (!id || t.id === id))?.sha ?? null;
+    const result = await api('project', {
+      scope,
+      ...(scope === 'project' ? { dir: project.dir } : { id }),
+      file,
+      action,
+      sha,
+      ...(rulePersona ? { persona: rulePersona } : {}),
+    });
     project = result.view;
     renderProject();
     announce(result.results ?? result.result, result.ok
-      ? (action === 'on' ? `${file} 已写入，所有读取方共享这个托管块。` : `${file} 的托管块已移除。`)
-      : '项目规则未改变。');
+      ? (action === 'on' ? `${file} 已写入（追加托管块），随时可移除。` : `${file} 的托管块已移除。`)
+      : '规则文件未改变。');
   });
 });
 

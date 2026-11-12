@@ -150,9 +150,10 @@ test('verification badges distinguish no request, process error, off success and
   await page.locator('#refresh').click();
   await expect(drawer).toContainText('请求未命中');
 });
-test('project rules page writes and removes a managed block', async ({ page, app }) => {
-  await page.getByRole('button', { name: '项目规则', exact: true }).click();
-  await expect(page.locator('#project-title')).toBeVisible();
+test('rule files page writes, identifies persona, supports global scope and removes cleanly', async ({ page, app }) => {
+  await page.getByRole('button', { name: '规则文件', exact: true }).click();
+  await expect(page.locator('#project-title')).toHaveText('规则文件');
+  await expect(page.locator('#project-scope-desc')).toContainText('append');
   const card = page.locator('.project-card').filter({ hasText: 'AGENTS.md' });
   await expect(card).toContainText('写入此项目');
   await card.locator('.project-diff summary').click();
@@ -160,20 +161,30 @@ test('project rules page writes and removes a managed block', async ({ page, app
   await page.locator('.project-coverage summary').click();
   await expect(page.locator('.project-coverage-list')).toContainText('Claude Code');
   await card.getByRole('button', { name: '写入此项目' }).click();
-  await expect(card.locator('.chip')).toHaveText('已写入');
+  await expect(card.locator('.chip')).toHaveText('已写入 · 中性模板');
   await expect(page.locator('.project-history')).toContainText('写入');
   await expect(card.locator('.project-after')).toBeVisible();
   const file = join(app.root, 'AGENTS.md');
   expect(readFileSync(file, 'utf8')).toContain('# >>> agent-purge');
   await card.getByRole('button', { name: '移除', exact: true }).click();
   await expect(card.locator('.chip')).toHaveText('未写入');
+
+  await page.locator('[name="rule-scope"][value="global"]').check();
+  const piGlobal = page.locator('.project-card').filter({ hasText: 'AGENTS.md (Pi)' });
+  await expect(piGlobal).toContainText('写入全局文件');
+  await piGlobal.getByRole('button', { name: '写入全局文件' }).click();
+  await expect(piGlobal.locator('.chip')).toHaveText('已写入 · 中性模板');
+  const globalFile = join(app.env.PI_CODING_AGENT_DIR, 'AGENTS.md');
+  expect(readFileSync(globalFile, 'utf8')).toContain('# >>> agent-purge');
+  await piGlobal.getByRole('button', { name: '移除', exact: true }).click();
+  await expect(piGlobal.locator('.chip')).toHaveText('未写入');
 });
 test('rules-only project file writes without an owner selector', async ({ page, app }) => {
-  await page.getByRole('button', { name: '项目规则', exact: true }).click();
+  await page.getByRole('button', { name: '规则文件', exact: true }).click();
   const card = page.locator('.project-card').filter({ hasText: '.clinerules' });
   await expect(card).toContainText('写入此项目');
   await card.getByRole('button', { name: '写入此项目' }).click();
-  await expect(card.locator('.chip')).toHaveText('已写入');
+  await expect(card.locator('.chip')).toHaveText('已写入 · 中性模板');
   const file = join(app.root, '.clinerules');
   expect(readFileSync(file, 'utf8')).toContain('# >>> agent-purge');
   await card.getByRole('button', { name: '移除', exact: true }).click();
@@ -186,7 +197,7 @@ test('rules-only project file writes without an owner selector', async ({ page, 
 for (const width of [1440, 768, 390, 320]) {
   test(`responsive ${width}px: no page overflow; accessible console/library/project/diagnostics`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
-    for (const [name, route] of [['控制台', 'console'], ['人设库', 'library'], ['项目规则', 'project'], ['测试与记录', 'diagnostics']]) {
+    for (const [name, route] of [['控制台', 'console'], ['人设库', 'library'], ['规则文件', 'project'], ['测试与记录', 'diagnostics']]) {
       await page.getByRole('button', { name, exact: true }).click();
       if (route === 'library') await page.getByRole('button', { name: /中性模板/ }).click();
       await expect(page.locator(`#page-${route}`)).toBeVisible();

@@ -47,7 +47,7 @@ agent-purge web
 
 1. 在 **「人设库」** 编辑起步模板或新建人设（支持从 GitHub 仓库或本地目录批量拉取）。
 2. 回到 **「控制台」** 选择人设与默认力度、保存设置，打开目标工具开关或点开右侧详情工作区调优通道。
-3. 在 **「项目规则」** 为指定代码库写入局部规则文件（仅影响该目录，随时可无损移除）。
+3. 在 **「规则文件」** 为指定项目目录或全局配置目录追加规则块（默认在原文件末尾 append，随时可无损移除）。
 
 控制台默认监听 `http://127.0.0.1:7788`；若端口被系统保留或占用，会自动顺延至 `7890–7909` 空闲端口并打开独立桌面窗口。首次启动不会自动接管任何工具。
 
@@ -57,9 +57,9 @@ agent-purge web
 
 ![agent-purge 工具详情与安全试跑](docs/images/console-detail.png)
 
-系统提示词接管在 **「控制台」**；按项目目录写入的 `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `AGENT.md` / `.clinerules` / `.roorules` 在 **「项目规则」** 页按文件统一托管。
+系统提示词接管在 **「控制台」**；项目目录及各家全局规则文件（`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`）统一在 **「规则文件」** 页按作用范围与指定人设写入。
 
-![agent-purge 项目规则](docs/images/project-rules.png)
+![agent-purge 规则文件](docs/images/project-rules.png)
 
 [查看移动端窄屏布局](docs/images/console-mobile.png)
 
@@ -183,7 +183,7 @@ agent-purge status
 | WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 身份上下文已验证（国际版写 `app/app-config.json`）；热切未验证 |
 | PI-Desktop | 0.21.0（便携版） | 已实测：常驻写 `~/.pi/agent/SYSTEM.md`；热切装在 `plugins/imported` 的 imported 插件里，同一会话换人设/`/purge off` 下一轮生效 |
 
-Cursor、Devin CLI、Copilot CLI、Amp、Cline、Roo Code、Gemini CLI、Qwen Code、Crush 的规则文件已接入「项目规则」页；其中 Cursor / Devin / Copilot / Amp / Cline / Roo 只写规则，不替换主 agent 的 system prompt。Muse Code 目前没有可安装的 CLI，暂不接入。
+Cursor、Devin CLI、Copilot CLI、Amp、Cline、Roo Code、Gemini CLI、Qwen Code、Crush 的规则文件已接入「规则文件」页；其中 Cursor / Devin / Copilot / Amp / Cline / Roo 只写规则，不替换主 agent 的 system prompt。Muse Code 目前没有可安装的 CLI，暂不接入。
 
 首次安装或更新插件代码后，仍需重新加载宿主。**配置写入、历史测试通过、当前会话实际生效，是不同状态。**
 

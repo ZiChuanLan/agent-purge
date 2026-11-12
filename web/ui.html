@@ -29,7 +29,7 @@
         <nav class="tabs" aria-label="主要导航">
           <button type="button" data-page="console" aria-current="page">控制台</button>
           <button type="button" data-page="library">人设库</button>
-          <button type="button" data-page="project">项目规则</button>
+          <button type="button" data-page="project">规则文件</button>
           <button type="button" data-page="diagnostics">测试与记录</button>
         </nav>
       </div>
@@ -233,35 +233,52 @@
       <section id="page-project" class="page" aria-labelledby="project-title" hidden>
         <div class="page-heading">
           <div>
-            <h1 id="project-title">项目规则</h1>
-            <p>写进项目根或工具自己的规则文件，只影响这个目录；和系统提示词接管是两条独立通道。</p>
+            <h1 id="project-title">规则文件</h1>
+            <p>把人设托管块追加到项目目录或工具全局规则文件；默认保留原文件并在末尾追加（append），随时可移除。</p>
           </div>
         </div>
 
-        <div class="project-toolbar">
-          <div class="field project-dir-field">
-            <label for="project-dir">项目目录</label>
-            <input id="project-dir" class="input" spellcheck="false" autocomplete="off" placeholder="例如 D:\work\my-project">
+        <div class="project-control-bar">
+          <div class="project-scope-switch">
+            <span class="field-label" id="rule-scope-label">作用范围</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="rule-scope-label">
+              <label><input type="radio" name="rule-scope" value="project" checked><span>当前项目</span></label>
+              <label><input type="radio" name="rule-scope" value="global"><span>全局目录</span></label>
+            </div>
           </div>
-          <button id="project-load" class="btn btn-primary" type="button">读取</button>
-          <button id="project-cwd" class="btn btn-ghost" type="button">当前目录</button>
+          <div class="project-persona-field">
+            <label for="project-persona-select" class="field-label">写入人设</label>
+            <select id="project-persona-select" class="select select-compact"></select>
+          </div>
         </div>
-        <div id="project-recent" class="project-recent" role="group" aria-label="最近项目"></div>
-        <div class="project-scope-bar" role="note" aria-label="项目规则生效层级">
+
+        <div id="project-dir-wrap">
+          <div class="project-toolbar">
+            <div class="field project-dir-field">
+              <label for="project-dir">项目目录</label>
+              <input id="project-dir" class="input" spellcheck="false" autocomplete="off" placeholder="例如 D:\work\my-project">
+            </div>
+            <button id="project-load" class="btn btn-primary" type="button">读取</button>
+            <button id="project-cwd" class="btn btn-ghost" type="button">当前目录</button>
+          </div>
+          <div id="project-recent" class="project-recent" role="group" aria-label="最近项目"></div>
+        </div>
+
+        <div class="project-scope-bar" role="note" aria-label="规则文件生效说明">
           <div class="project-scope-item">
             <span class="project-scope-label">全局人设</span>
             <strong>系统提示词接管</strong>
-            <small>在「控制台」管理，影响整台机器</small>
+            <small>在「控制台」管理，按各家系统入口生效</small>
           </div>
           <span class="project-scope-arrow" aria-hidden="true">→</span>
           <div class="project-scope-item">
-            <span class="project-scope-label">项目规则</span>
-            <strong>当前目录的规则文件</strong>
-            <small>只写这个目录，文件里的托管块对所有读取方生效</small>
+            <span class="project-scope-label">规则文件</span>
+            <strong id="project-scope-heading">当前目录的规则文件</strong>
+            <small id="project-scope-desc">人设以托管块追加在原文件末尾（append），保留原有规则，随时可移除</small>
           </div>
         </div>
-        <div id="project-targets" class="project-targets"><p class="empty">正在读取项目规则…</p></div>
-        <p class="hint project-footnote">项目块只影响这个目录；同一个文件可能被多个工具读取，写入一次对所有读取方生效。全局人设仍来自「控制台」。全局暂停会撤下系统层项目块，恢复后按当前选择写回；仅规则宿主的块需在本页移除。「全部撤销」不会动这里。</p>
+        <div id="project-targets" class="project-targets"><p class="empty">正在读取规则文件…</p></div>
+        <p class="hint project-footnote">规则文件只影响对应的项目目录或全局配置文件；以托管块追加在文件末尾，不影响原有规则内容。「全部撤销」不会动项目规则，本页点「移除」即可无损撤回。</p>
       </section>
 
       <section id="page-diagnostics" class="page" aria-labelledby="diagnostics-title" hidden>

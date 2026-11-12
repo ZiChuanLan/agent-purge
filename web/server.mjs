@@ -11,7 +11,8 @@ import { createStore, isValidId } from "../lib/personas.mjs";
 import { MODES, ARMS, armedOf, dshProfilesOf, loadState, resolveFor, resolveActivation, setPiAuto, setOmpAuto, setDshProfile } from "../lib/state.mjs";
 import { withControlLock } from "../lib/control.mjs";
 import { status as persistStatus } from "../lib/persist.mjs";
-import { projectStatus, projectDirectories, projectTargets, projectPreview, projectChangePreview, projectOverview, gitHint, gitHints, projectInstall, projectUninstall } from "../lib/project.mjs";
+import { projectStatus, projectDirectories, projectTargets, projectPreview, projectChangePreview, projectOverview, gitHint, gitHints, projectInstall, projectUninstall, globalRuleStatus, globalRuleChangePreview, globalRuleInstall, globalRuleUninstall } from "../lib/project.mjs";
+import { listLedger } from "../lib/footprints.mjs";
 import { appendProjectHistory, readProjectHistory } from "../lib/project-history.mjs";
 import { plans } from "../lib/armor.mjs";
 import { shimStatus } from "../lib/shim.mjs";
@@ -195,7 +196,7 @@ async function handle(req, res, ctx = {}) {
 		return send(res, 200, { ok: true, exit: live });
 	}
 	if (req.method === "GET" && p === "/api/state") return send(res, 200, await state(url.searchParams.get("versions") === "1"));
-	if (req.method === "GET" && p === "/api/project") return send(res, 200, projectView(url.searchParams.get("dir")));
+	if (req.method === "GET" && p === "/api/project") return send(res, 200, projectView(url.searchParams.get("dir"), { scope: url.searchParams.get("scope"), persona: url.searchParams.get("persona") }));
 	if (req.method === "GET" && p === "/api/armor") return send(res, 200, armorState());
 	if (req.method === "POST" && p === "/api/apply") return send(res, 200, applyChanges(await body(req)));
 	if (req.method === "POST" && p === "/api/power") return send(res, 200, applyConfiguration(DATA, { enabled: booleanField(await body(req), "on") }));
@@ -536,11 +537,67 @@ function resolveProjectDir(input) {
 }
 
 /** 按文件分组，而不是按 harness：同一个 AGENTS.md 会被多家共同读取；文件是共享资源，读取方只做展示。 */
-function projectView(input) {
-	const dir = resolveProjectDir(input);
+function resolveRulePersona(store, requested) {
+	const activeId = store.activeId();
+	const id = typeof requested === "string" && requested.trim() ? requested.trim() : "";
+	const picked = id ? store.read(id) : null;
+	if (picked) return { personaId: picked.id, activeId, picked };
+	return { personaId: activeId, activeId, picked: store.read(activeId) };
+}
+
+function matchWrittenPersona(allPersonas, previewText, ledgerPersona) {
+	if (previewText) {
+		const trimmed = previewText.trim();
+		const byBody = allPersonas.find(p => p.body.trim() === trimmed);
+		if (byBody) return { id: byBody.id, name: byBody.meta?.name || byBody.id };
+	}
+	if (ledgerPersona) {
+		const byId = allPersonas.find(p => p.id === ledgerPersona);
+		if (byId) return { id: byId.id, name: byId.meta?.name || byId.id };
+		return { id: ledgerPersona, name: ledgerPersona };
+	}
+	return null;
+}
+
+function projectView(input, { scope = "project", persona = null } = {}) {
 	const store = createStore(DATA);
-	const personaId = store.activeId();
-	const picked = store.read(personaId);
+	const { personaId, activeId, picked } = resolveRulePersona(store, persona);
+	const allPersonas = store.list();
+	const ledger = listLedger(DATA);
+	const pathKey = p => (process.platform === "win32" ? String(p).toLowerCase() : String(p));
+
+	if (scope === "global") {
+		const history = readProjectHistory(DATA, "__global__");
+		const targets = globalRuleStatus(DATA).map(row => {
+			const change = picked ? globalRuleChangePreview(row.id, { active: picked.body.trim() }) : null;
+			const histPersona = row.on ? history.find(h => h.file === row.label && h.action === "write" && h.ok !== false)?.persona ?? null : null;
+			const matched = row.hasBlock ? matchWrittenPersona(allPersonas, row.preview?.text, row.ledgerPersona || histPersona) : null;
+			return {
+				id: row.id,
+				file: row.label,
+				fileName: row.file,
+				path: row.path,
+				tools: row.tools,
+				readers: row.tools,
+				selected: row.on,
+				selectedReaders: row.on ? row.tools : [],
+				on: row.on,
+				hasBlock: row.hasBlock,
+				sha: row.sha,
+				preview: row.preview,
+				writtenPersona: matched?.id ?? null,
+				writtenPersonaName: matched?.name ?? null,
+				diff: change && !change.error ? change.diff : null,
+				after: change && !change.error ? change.after : null,
+				afterChars: change && !change.error ? change.afterChars : null,
+				afterTruncated: change && !change.error ? change.truncated : false,
+				gitHint: null,
+			};
+		});
+		return { scope: "global", dir: null, cwd: process.cwd(), targets, projects: [], history, recent: [], persona: personaId, activePersona: activeId, paused: false };
+	}
+
+	const dir = resolveProjectDir(input);
 	const groups = new Map();
 	for (const row of projectStatus(dir, DATA)) {
 		const name = projectTargets[row.id];
@@ -550,13 +607,18 @@ function projectView(input) {
 		group.tools.push(row.id);
 		group.rows.push(row);
 	}
+	const history = readProjectHistory(DATA, dir);
 	const hints = gitHints(dir, [...groups.keys()]);
 	const targets = [...groups.values()].map(group => {
 		const onRow = group.rows.find(row => row.on) ?? null;
 		const blockRow = group.rows.find(row => row.hasBlock) ?? null;
 		const selectedRows = group.rows.filter(row => row.selected);
 		const previewOwner = onRow?.id ?? blockRow?.id ?? null;
+		const preview = previewOwner ? projectPreview(dir, previewOwner) : null;
 		const change = picked ? projectChangePreview(group.rows[0].id, { dir, active: picked.body.trim() }) : null;
+		const ledgerPersona = [...ledger].reverse().find(e => e.channel === "project" && e.persona && typeof e.path === "string" && pathKey(e.path) === pathKey(group.path))?.persona ?? null;
+		const histPersona = onRow ? history.find(h => h.file === group.file && h.action === "write" && h.ok !== false)?.persona ?? null : null;
+		const matched = (onRow || blockRow) ? matchWrittenPersona(allPersonas, preview?.text, ledgerPersona || histPersona) : null;
 		return {
 			file: group.file,
 			path: group.path,
@@ -567,7 +629,9 @@ function projectView(input) {
 			on: Boolean(onRow),
 			hasBlock: Boolean(blockRow),
 			sha: group.rows.find(row => row.sha !== null)?.sha ?? null,
-			preview: previewOwner ? projectPreview(dir, previewOwner) : null,
+			preview,
+			writtenPersona: matched?.id ?? null,
+			writtenPersonaName: matched?.name ?? null,
 			diff: change && !change.error ? change.diff : null,
 			after: change && !change.error ? change.after : null,
 			afterChars: change && !change.error ? change.afterChars : null,
@@ -583,7 +647,7 @@ function projectView(input) {
 		seen.add(key(path));
 		recent.push(path);
 	}
-	return { dir, cwd: process.cwd(), targets, projects: projectOverview(DATA, dir), history: readProjectHistory(DATA, dir), recent: recent.slice(0, 8), persona: personaId, paused: loadState(DATA).state.default?.mode === "off" };
+	return { scope: "project", dir, cwd: process.cwd(), targets, projects: projectOverview(DATA, dir), history, recent: recent.slice(0, 8), persona: personaId, activePersona: activeId, paused: loadState(DATA).state.default?.mode === "off" };
 }
 
 const RULES_ONLY = new Set(["cursor", "devin", "gemini", "copilot", "amp", "cline", "roo"]);
@@ -598,6 +662,28 @@ function noteProject(dir, file, action, ok, persona) {
 }
 
 function saveProject(payload) {
+	const scope = payload.scope === "global" ? "global" : "project";
+	const store = createStore(DATA);
+	const requestedPersona = typeof payload.persona === "string" && payload.persona.trim() ? payload.persona.trim() : null;
+	if (requestedPersona && !store.read(requestedPersona)) throw httpError(400, `找不到人设：${requestedPersona}`);
+	const { personaId, activeId, picked } = resolveRulePersona(store, requestedPersona);
+	const enabled = verbOf(payload.action) === "on";
+
+	if (scope === "global") {
+		const targetId = typeof payload.id === "string" && payload.id ? payload.id : null;
+		const row = globalRuleStatus(DATA).find(item => item.id === targetId || item.label === payload.file || item.file === payload.file);
+		if (!row) throw httpError(400, `未知全局规则目标：${targetId || payload.file || ""}`);
+		if (enabled) {
+			if (!picked) throw httpError(400, "没有可用人设");
+			const result = globalRuleInstall(row.id, { root: DATA, active: picked.body.trim(), expectSha: payload.sha, persona: picked.id });
+			noteProject("__global__", row.label, "write", !result.error, picked.id);
+			return { ok: !result.error, result, view: projectView(null, { scope: "global", persona: personaId }) };
+		}
+		const result = globalRuleUninstall(row.id, { root: DATA, expectSha: payload.sha });
+		noteProject("__global__", row.label, "remove", !result.error, personaId);
+		return { ok: !result.error, result, view: projectView(null, { scope: "global", persona: personaId }) };
+	}
+
 	const dir = resolveProjectDir(payload.dir);
 	const legacyHarness = typeof payload.harness === "string" && Object.hasOwn(projectTargets, payload.harness) ? payload.harness : null;
 	const file = typeof payload.file === "string" && payload.file ? payload.file : (legacyHarness ? projectTargets[legacyHarness] : null);
@@ -609,24 +695,22 @@ function saveProject(payload) {
 		const current = rows.find(row => row.sha !== null)?.sha ?? null;
 		if (payload.sha !== current) throw httpError(409, "项目文件在预览后被外部修改，请刷新后再操作");
 	}
-	const enabled = verbOf(payload.action) === "on";
 	if (enabled) {
+		if (!picked) throw httpError(400, "没有可用人设");
 		const writer = legacyHarness && readers.includes(legacyHarness)
 			? legacyHarness
 			: readers.find(id => !RULES_ONLY.has(id)) ?? readers[0];
-		if (RULES_ONLY.has(writer)) {
-			const store = createStore(DATA);
-			const picked = store.read(store.activeId());
-			if (!picked) throw httpError(400, "没有可用人设");
-			const result = projectInstall(writer, { root: DATA, active: picked.body.trim(), dir, expectSha: payload.sha });
+		const paused = loadState(DATA).state.default?.mode === "off";
+		if (RULES_ONLY.has(writer) || personaId !== activeId || rows.some(r => r.on)) {
+			const result = projectInstall(writer, { root: DATA, active: picked.body.trim(), dir, paused: !RULES_ONLY.has(writer) && paused, expectSha: payload.sha, persona: picked.id });
 			noteProject(dir, file, "write", !result.error, picked.id);
-			return { ok: !result.error, result, view: projectView(dir) };
+			return { ok: !result.error, result, view: projectView(dir, { scope: "project", persona: personaId }) };
 		}
 		const cap = capsFor(writer).project;
 		if (!cap?.ok) throw httpError(400, cap?.why ?? "这家不支持项目规则");
 		const result = changeChannel(DATA, { harness: writer, channel: "project", enabled: true, dir, expectSha: payload.sha });
-		noteProject(dir, file, "write", result.status !== "failed", createStore(DATA).activeId());
-		return { ok: result.status !== "failed", result, view: projectView(dir) };
+		noteProject(dir, file, "write", result.status !== "failed", picked.id);
+		return { ok: result.status !== "failed", result, view: projectView(dir, { scope: "project", persona: personaId }) };
 	}
 	// 文件级移除：先把所有登记过这个目录的读取方都卸掉；最后一个撤销时才还原文件字节。
 	const results = [];
@@ -645,8 +729,8 @@ function saveProject(payload) {
 		results.push({ id: writer, ...result });
 	}
 	const failed = results.filter(result => result.status === "failed" || result.error);
-	noteProject(dir, file, "remove", !failed.length, createStore(DATA).activeId());
-	return { ok: !failed.length, results, view: projectView(dir) };
+	noteProject(dir, file, "remove", !failed.length, personaId);
+	return { ok: !failed.length, results, view: projectView(dir, { scope: "project", persona: personaId }) };
 }
 function saveDefaults(payload) {
 	const report = applyChanges(payload);

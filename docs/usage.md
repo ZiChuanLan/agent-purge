@@ -107,7 +107,7 @@ agent-purge project off --dir /path/to/project
 
 目录以绝对路径登记。后续同步只处理已登记的目录，不跟着当前工作目录漂移；暂停保留登记，恢复后按原范围应用。
 
-Web 的「项目规则」页按规则文件分组管理：`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `AGENT.md` / `.clinerules` / `.roorules` 都可切换目录、查看读取方、按工具查看读取关系、查看写入差异和写入后的规则文件、预览托管块并写入或移除；本页操作会留下记录。同一个规则文件可能被多个工具读取，写入一次对所有读取方生效，不再要求选择托管归属。它和系统提示词接管是两条独立通道。「全部撤销接管」不会动项目块；全局暂停会撤下系统层项目块，恢复后按当前选择写回，仅规则宿主的块要在项目页单独移除。Cursor、Devin CLI、Amp、Cline、Roo Code 只支持这条规则通道，不替换主 agent 的 system prompt；Gemini CLI 另有 `GEMINI_SYSTEM_MD` 环境变量，Qwen Code 另有启动参数通道。
+Web 的「规则文件」页支持切换「当前项目」与「全局目录」作用范围并指定要写入的人设（以托管块追加在原文件末尾，保留原有规则、随时可移除），按规则文件分组管理：`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `AGENT.md` / `.clinerules` / `.roorules` 都可切换目录、查看读取方、按工具查看读取关系、查看写入差异和写入后的规则文件、预览托管块并写入或移除；本页操作会留下记录。同一个规则文件可能被多个工具读取，写入一次对所有读取方生效，不再要求选择托管归属。它和系统提示词接管是两条独立通道。「全部撤销接管」不会动项目块；全局暂停会撤下系统层项目块，恢复后按当前选择写回，仅规则宿主的块要在项目页单独移除。Cursor、Devin CLI、Amp、Cline、Roo Code 只支持这条规则通道，不替换主 agent 的 system prompt；Gemini CLI 另有 `GEMINI_SYSTEM_MD` 环境变量，Qwen Code 另有启动参数通道。
 
 项目通道不提供每个文件夹独立的人设；仍跟随全局或分家配置。其他执行器可能也读取同名 `AGENTS.md` / `CLAUDE.md`，同时开启项目与全局入口可能重复提供人设。
 

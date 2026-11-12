@@ -13,7 +13,7 @@ for (const key of ["HOME", "USERPROFILE", "XDG_CONFIG_HOME", "DSH_HOME", "CODEX_
 process.env.AGENT_PURGE_HOME = join(dir, "data");
 process.env.AGENT_PURGE_SHIM_DIR = join(dir, "bin");
 for (const key of ["AGENT_PURGE_MODE", "AGENT_PURGE_FORCE", "AGENT_PURGE_PERSONA"]) delete process.env[key];
-const { gitHint, projectInstall, projectStatus, projectUninstall, projectChangePreview, projectOverview } = await import("../lib/project.mjs");
+const { gitHint, projectInstall, projectStatus, projectUninstall, projectChangePreview, projectOverview, globalRuleStatus, globalRuleChangePreview, globalRuleInstall, globalRuleUninstall } = await import("../lib/project.mjs");
 const { listLedger } = await import("../lib/footprints.mjs");
 const { appendProjectHistory, readProjectHistory } = await import("../lib/project-history.mjs");
 const { applyConfiguration, changeChannel } = await import("../lib/apply.mjs");
@@ -420,4 +420,31 @@ test("project：git 仓库里未跟踪的规则文件给提示，跟踪后不再
 	git("add", "AGENTS.md");
 	assert.equal(gitHint("pi", proj), null, "已被跟踪的文件不该再提示");
 	assert.equal(gitHint("pi", join(dir, "not-a-repo")), null, "不是 git 仓库不提示");
+});
+
+
+test("globalRuleInstall/Uninstall：追加在原文件末尾并按原字节撤回", () => {
+	const root = join(dir, "data-global");
+	const claudeFile = join(process.env.CLAUDE_CONFIG_DIR, "CLAUDE.md");
+	mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
+	writeFileSync(claudeFile, "# Existing Global Rules\n");
+
+	const prev = globalRuleChangePreview("claude", { active: "GLOBAL_PERSONA" });
+	assert.equal(prev.diff.added > 0, true);
+	assert.ok(prev.after.startsWith("# Existing Global Rules\n"));
+	assert.ok(prev.after.includes("GLOBAL_PERSONA"));
+
+	const res = globalRuleInstall("claude", { root, active: "GLOBAL_PERSONA", persona: "custom-p", expectSha: prev.sha });
+	assert.equal(res.action, "appended-block");
+
+	const st = globalRuleStatus(root).find(r => r.id === "claude");
+	assert.equal(st.on, true);
+	assert.equal(st.ledgerPersona, "custom-p");
+
+	const conflict = globalRuleInstall("claude", { root, active: "OTHER", expectSha: "stale" });
+	assert.equal(conflict.action, "conflict");
+
+	const rm = globalRuleUninstall("claude", { root, expectSha: st.sha });
+	assert.equal(rm.exact, true);
+	assert.equal(readFileSync(claudeFile, "utf8"), "# Existing Global Rules\n");
 });
