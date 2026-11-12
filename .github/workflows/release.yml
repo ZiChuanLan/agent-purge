@@ -91,8 +91,35 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  build_mac:
+    needs: verify
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.4'
+      - run: npm ci --ignore-scripts
+      - run: npm run build:dmg
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-assets-mac
+          path: |
+            dist/agent-purge-*-darwin-*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
   publish:
-    needs: build
+    needs: [build, build_mac]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -111,6 +138,17 @@ jobs:
         with:
           name: release-assets
           path: release-assets
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-assets-mac
+          path: release-assets/dist
+      - name: Append macOS checksums
+        run: |
+          set -euo pipefail
+          (
+            cd release-assets/dist
+            sha256sum agent-purge-"${RELEASE_TAG#v}"-darwin-*.dmg >> SHA256SUMS.txt
+          )
       - name: Verify tag and package version
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -155,6 +193,8 @@ jobs:
             "release-assets/dist/agent-purge-$VERSION.zip" \
             "release-assets/dist/agent-purge-$VERSION-setup.exe" \
             "release-assets/dist/agent-purge.exe" \
+            "release-assets/dist/agent-purge-$VERSION-darwin-arm64.dmg" \
+            "release-assets/dist/agent-purge-$VERSION-darwin-x64.dmg" \
             "release-assets/dist/standalone-manifest.json" \
             "release-assets/dist/SHA256SUMS.txt" \
             --clobber

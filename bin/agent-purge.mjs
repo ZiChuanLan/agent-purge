@@ -38,6 +38,19 @@ if (argv[0] === "self-uninstall" && !argv.includes("--yes") && !argv.includes("-
 	console.error("self-uninstall 会永久删除用户人设、设置和恢复资料。请先备份；仅撤销接管并保留数据请用 agent-purge clean。\n先预览：agent-purge self-uninstall --dry-run\n确认删除：agent-purge self-uninstall --yes");
 	process.exit(2);
 }
+// Finder 双击 .app 启动时 PATH 仅含系统目录，补全常见用户工具路径以便探测本机 CLI。
+if (process.platform === "darwin" && isCompiled() && process.env.AGENT_PURGE_ISOLATED !== "1") {
+	const home = process.env.HOME || "";
+	const extra = [
+		"/opt/homebrew/bin",
+		"/usr/local/bin",
+		home && join(home, ".local", "bin"),
+		home && join(home, ".bun", "bin"),
+		home && join(home, ".npm-global", "bin"),
+	].filter(Boolean);
+	const cur = (process.env.PATH || "").split(":").filter(Boolean);
+	process.env.PATH = [...cur, ...extra.filter((p) => !cur.includes(p))].join(":");
+}
 ensureDataHome(isCompiled() ? null : ROOT);
 
 installCrashHandlers();

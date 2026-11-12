@@ -72,10 +72,11 @@ agent-purge web
 | `agent-purge-<版本>-setup.exe` | Windows，外部 Node.js 20+ | 图形安装和卸载 |
 | `agent-purge-<版本>.zip` | Windows，外部 Node.js 20+ | 解压后使用 |
 | `agent-purge.exe` | Windows x64，自带运行时 | 无需另装 Node 的独立便携版 |
+| `agent-purge-<版本>-darwin-arm64.dmg` / `x64.dmg` | macOS 12+（Apple Silicon / Intel，自带运行时） | 未签名 `.app` 磁盘镜像，拖入 `/Applications` 后首次需右键「打开」或 `xattr -cr` 放行 |
 
 下载附件以实际 [GitHub Releases](https://github.com/ZiChuanLan/agent-purge/releases) 为准；未发布的版本没有附件。请核对 SHA-256 和签名状态，未签名程序可能出现系统提示。ZIP 中的 EXE 是薄启动器，不是自带运行时的独立版。
 
-SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux/macOS 使用 npm 或源码入口，不能运行 Windows EXE。平台验证范围见[兼容性说明](docs/compatibility.md)。
+SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux 使用 npm 或源码入口，macOS 可用 npm / 源码或 `.dmg` 镜像（`.dmg` 未经 Apple 签名与公证）。平台验证范围见[兼容性说明](docs/compatibility.md)。
 
 控制台右上角的版本角标点开就是升级入口，按安装形态自动选路：独立 EXE 下载并就地热替换、npm 全局安装调 `npm install -g`、**源码检出（`git clone` 后直接 `node bin/agent-purge.mjs`）在安装目录执行 `git pull --ff-only`**，不下载任何发布产物。源码检出的「有没有更新」按上游提交算，版本号没变也会提示；工作区有未提交改动、处于游离 HEAD 或分支没有上游时一律拒绝并说明原因。
 

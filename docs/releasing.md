@@ -35,6 +35,15 @@ npm run release:checksums
 
 ZIP 里的 `agent-purge.exe` 是薄启动器，**不是**独立 EXE。安装器构建会校验薄包的 manifest 与当前源码，不能复用旧目录或混装产品。
 
+## macOS 构建
+
+`npm run build:dmg`（仅可在 macOS 上执行，正式发布由 `.github/workflows/release.yml` 的 `build_mac` 在 `macos-latest` runner 自动执行）会借助 Bun 编译 `darwin-arm64` / `darwin-x64` 单文件二进制，打包 `.app` 与 `AppIcon.icns`，再用 `hdiutil` 生成并校验：
+
+- `dist/agent-purge-<版本>-darwin-arm64.dmg`
+- `dist/agent-purge-<版本>-darwin-x64.dmg`
+
+产物未做 Apple `codesign` 签名与 `notarytool` 公证，首次打开会触发 Gatekeeper 提示（右键「打开」或 `xattr -cr` 放行）。
+
 ## 安装验收
 
 `scripts/check-installer.ps1` 默认只接受临时 Windows Actions runner。本机验收需要明确使用：
@@ -79,7 +88,7 @@ git push origin v0.2.11
 tag 推送会触发 `release.yml`：
 
 1. `verify`：Node 24 上 `npm ci`、`check:repo`、全部测试、`test:package`。
-2. `build`：Windows 上构建 ZIP/EXE/setup，跑安装验收和校验和，把三个产物及 `SHA256SUMS.txt`、manifest、npm tarball 上传为 Actions artifact。
+2. `build` / `build_mac`：分别在 Windows 上构建 ZIP/EXE/setup 并跑安装验收，以及在 `macos-latest` 上构建 arm64/x64 未签名 `.dmg`；汇总产物、校验和与 npm tarball。
 3. `publish`：校验 tag 与版本一致；`npm publish --provenance`（已存在的同版本会跳过）；创建 GitHub Release 并上传附件。
 
 需要重跑时使用 Actions 的 `workflow_dispatch`，输入已存在的 tag；发布是幂等的，不会重复上传同版本 npm 包，Release 附件使用 `--clobber` 覆盖。
