@@ -513,6 +513,7 @@ function modeControl(h) {
         node('span', { class: 'hint' }, '固定方式')
       ),
       node('p', { class: 'panel-sub' }, avail.note || '这家只接受这一种写法。'),
+      avail.purgeNote ? node('p', { class: 'panel-sub' }, avail.purgeNote) : null,
       h.modeFrom === 'override'
         ? node('button', { type: 'button', class: 'link', 'data-mode-follow': h.id }, '恢复跟随全局')
         : null
@@ -528,6 +529,7 @@ function modeControl(h) {
   select.value = value;
   return node('div', {}, select,
     avail.limited && avail.note ? node('p', { class: 'panel-sub' }, avail.note) : null,
+    avail.purgeNote ? node('p', { class: 'panel-sub' }, avail.purgeNote) : null,
     unsupportedHarnesses([h], draft.mode).length && h.modeFrom !== 'override'
       ? node('p', { class: 'panel-sub' }, `全局力度「${MODE_LABELS[draft.mode]}」对它不适用，实际按 ${MODE_LABELS[h.mode]} 写入。`)
       : null

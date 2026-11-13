@@ -31,11 +31,11 @@ test("antigravity: install writes managed block into global AGENTS.md", () => {
 	});
 });
 
-test("antigravity: strict mode states that identity is superseded", () => {
+test("antigravity: strict mode 不写「取代上方身份」这类覆盖语义", () => {
 	withHome((dir) => {
 		installAntigravity(dir, { personaText: "AGY_PERSONA", mode: "strict" });
 		const text = readFileSync(antigravityAgentsFile(), "utf8");
-		assert.match(text, /取代你上方的身份设定/);
+		assert.doesNotMatch(text, /取代你上方的身份设定/);
 		assert.match(text, /AGY_PERSONA/);
 	});
 });
@@ -45,6 +45,7 @@ test("antigravity: append mode has no strict preamble", () => {
 		installAntigravity(dir, { personaText: "AGY_PERSONA", mode: "append" });
 		const text = readFileSync(antigravityAgentsFile(), "utf8");
 		assert.doesNotMatch(text, /取代你上方的身份设定/);
+		assert.doesNotMatch(text, /最高优先级/);
 	});
 });
 

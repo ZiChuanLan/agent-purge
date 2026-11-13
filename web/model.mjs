@@ -10,6 +10,17 @@ export const MODE_DESCRIPTIONS = {
  * matrix.json 里 `modes` 显式声明过就只认它（off=暂停永远可用）；
  * 没声明 = 四种都可用。`preferredMode` 是实测首选，UI 只做高亮，不限制。
  */
+/**
+ * 宿主给的入口分两档：真能整段替换 system prompt 的，和只能把文本追加进去的。
+ * append/partial 两档要明说「内置身份仍在」，否则用户在 antigravity 这类家上
+ * 选了「只留人设」却拿到追加效果，就是虚假宣传。
+ */
+const PURGE_NOTES = {
+  append: '这家没有整段 system prompt 入口：人设是追加进去的，内置身份仍在提示词里。',
+  partial: '替换生效，但宿主仍会前置自己的身份句。',
+  unverified: '这家还没有系统提示词字数的实测，不声称已净化。',
+};
+export const purgeNoteOf = (harness) => PURGE_NOTES[harness?.purgeKind] ?? null;
 export function modeAvailability(harness) {
   const declared = Array.isArray(harness?.modes) && harness.modes.length ? harness.modes : null;
   const supported = declared ? new Set([...declared, 'off']) : new Set(Object.keys(MODE_LABELS));
@@ -18,6 +29,8 @@ export function modeAvailability(harness) {
     limited: Boolean(declared),
     preferred: harness?.preferredMode ?? null,
     note: harness?.modesNote ?? (declared ? `这家只支持：${declared.map(m => MODE_LABELS[m] || m).join(' / ')}` : null),
+    purgeKind: harness?.purgeKind ?? 'replace',
+    purgeNote: purgeNoteOf(harness),
   };
 }
 /** 这批执行器里，哪些根本不认这个模式（全局三选一与各家下拉共用同一份判断） */
@@ -65,7 +78,7 @@ export const HARNESS_PURGE_EFFECTS = {
     typeLabel: '配置接管',
     safetyLevel: 'safe',
     items: [
-      '替换内置产品身份（去掉「You are WorkBuddy」声明）',
+      '按模板剥离「You are WorkBuddy」等产品身份行（未抓包测字数）',
       '收起内容政策与强制拒答条款',
       '收起高危目录的递归操作禁令',
       '同步 app-config.json 里的自定义指令',
@@ -77,7 +90,7 @@ export const HARNESS_PURGE_EFFECTS = {
     typeLabel: '配置接管',
     safetyLevel: 'safe',
     items: [
-      '替换内置产品身份（去掉「You are WorkBuddy」声明）',
+      '按模板剥离「You are WorkBuddy」等产品身份行（未抓包测字数）',
       '收起内容政策与强制拒答条款',
       '收起高危目录的递归操作禁令',
       '同步 app-config.json 里的自定义指令',
@@ -112,7 +125,7 @@ export const HARNESS_PURGE_EFFECTS = {
     safetyLevel: 'safe',
     items: [
       '托管全局 AGENTS.md，不用手动挂载',
-      '「只留人设」时追加覆盖指令，压住内置身份',
+      '人设以 <user_rules> 追加：内置 <identity> 仍在系统提示词里，不是替换',
       '改动前留原字节快照，关闭时自动还原'
     ]
   },
@@ -150,7 +163,7 @@ export const HARNESS_PURGE_EFFECTS = {
     typeLabel: '启动命令',
     safetyLevel: 'shim',
     items: [
-      '用 --system-prompt-file 替换系统提示词',
+      '用 --system-prompt-file 替换系统提示词（不打二进制补丁时仍残留 62 字身份句）',
       '保留 ~/.claude/CLAUDE.md 与项目规则'
     ]
   },
@@ -213,7 +226,7 @@ export const HARNESS_PURGE_EFFECTS = {
     typeLabel: '配置接管',
     safetyLevel: 'safe',
     items: [
-      '写进 ~/.config/kilo/agent/code.md，替换 code agent 身份',
+      '写进 ~/.config/kilo/agent/code.md，替换 code agent 提示词（宿主 soul() 仍前置 "You are Kilo"）',
       '原文件快照，关闭时自动还原'
     ]
   }

@@ -12,7 +12,12 @@
       "defaultSystemChars": 5713,
       "purgedSystemChars": 68,
       "measuredVersion": "0.2.1-rc.2",
-      "verify": "本地假 provider 抓请求体：headless / desktop / web 三形态各验一遍，插件 canary 进 system（本机走 developer 角色）"
+      "verify": "本地假 provider 抓请求体：headless / desktop / web 三形态各验一遍，插件 canary 进 system（本机走 developer 角色）",
+      "safety": {
+        "off": 0,
+        "purged": 0,
+        "note": "零安全条款，system 主要是工具与文件策略说明"
+      }
     },
     "opencode2": {
       "class": "plugin",
@@ -24,7 +29,12 @@
       "defaultSystemChars": 8279,
       "purgedSystemChars": 3189,
       "measuredVersion": "0.0.0-beta-17823",
-      "verify": "本地假 provider 抓请求体：canary 进 role=system 消息（--print-logs 可看到 v2 插件加载）"
+      "verify": "本地假 provider 抓请求体：canary 进 role=system 消息（--print-logs 可看到 v2 插件加载）",
+      "safety": {
+        "off": 0,
+        "purged": 0,
+        "note": "零安全条款"
+      }
     },
     "pi": {
       "class": "native-extension",
@@ -54,6 +64,12 @@
         },
         "preferredMode": "replace",
         "note": "sys 通过"
+      },
+      "purgeKind": "unverified",
+      "safety": {
+        "off": 0,
+        "purged": 0,
+        "note": "零安全条款，system 只有工具列表与人设"
       }
     },
     "pi-desktop": {
@@ -69,7 +85,8 @@
       "verify": "本机 0.21.0 便携版真实会话：装 imported 插件后新会话自称「小码酱」，同会话改 state.json 人设下一轮变「大肥鱼」，/purge off 后恢复 Gemini；SYSTEM.md 常驻另测（写入→自称测试体→卸载→恢复）",
       "residue": "宿主操作规则/tool 指南保留；项目 .pi/SYSTEM.md 优先级高于全局；与 pi CLI 共用 ~/.pi/agent",
       "note": "Electron + Rust host + pi Agent Harness；扩展只能由插件贡献（ADR 0215），agent-purge 以 imported 插件装 ExtensionAPI，/purge 与换人设热切换",
-      "preferredMode": "replace"
+      "preferredMode": "replace",
+      "purgeKind": "unverified"
     },
     "opencode": {
       "class": "plugin",
@@ -99,6 +116,11 @@
         },
         "note": "sys 通过",
         "preferredMode": "replace"
+      },
+      "safety": {
+        "off": 1,
+        "purged": 0,
+        "note": "同上，唯一命中是反向的「别说教」表述，非安全限制"
       }
     },
     "codex": {
@@ -133,7 +155,12 @@
       "modes": [
         "replace"
       ],
-      "modesNote": "只写 model_instructions_file 指向人设文件＝整份指令文件被换掉，模式参数不参与"
+      "modesNote": "只写 model_instructions_file 指向人设文件＝整份指令文件被换掉，模式参数不参与",
+      "safety": {
+        "off": 0,
+        "purged": 0,
+        "note": "23759 字里零安全条款；唯一 policy 命中是 Approval policy（沙箱权限说明），不是内容政策"
+      }
     },
     "gemini": {
       "class": "launch-arg",
@@ -165,7 +192,8 @@
       "modes": [
         "append"
       ],
-      "modesNote": "CRUSH.md 是系统提示词的追加上下文，不能整份替换；启动时读取，改完要重开"
+      "modesNote": "CRUSH.md 是系统提示词的追加上下文，不能整份替换；启动时读取，改完要重开",
+      "purgeKind": "append"
     },
     "continue": {
       "class": "launch-arg",
@@ -181,7 +209,8 @@
       "modes": [
         "append"
       ],
-      "modesNote": "--rule 追加规则/上下文；没有整份替换 system prompt 的入口"
+      "modesNote": "--rule 追加规则/上下文；没有整份替换 system prompt 的入口",
+      "purgeKind": "append"
     },
     "qoder": {
       "class": "launch-arg",
@@ -230,7 +259,8 @@
       "modes": [
         "append"
       ],
-      "modesNote": "--rules 追加规则/上下文；没有整份替换 system prompt 的入口"
+      "modesNote": "--rules 追加规则/上下文；没有整份替换 system prompt 的入口",
+      "purgeKind": "append"
     },
     "goose": {
       "class": "launch-arg",
@@ -246,7 +276,8 @@
       "modes": [
         "append"
       ],
-      "modesNote": "--system 是 additional system instructions，不改写整份 core system prompt"
+      "modesNote": "--system 是 additional system instructions，不改写整份 core system prompt",
+      "purgeKind": "append"
     },
     "qwen": {
       "class": "launch-arg",
@@ -282,17 +313,17 @@
       "modesNote": "自定义 agent 的 prompt 是整段系统提示词；没有 append/strict 入口"
     },
     "claude": {
-      "class": "launch-arg + binary-patch",
+      "class": "launch-arg",
       "override": true,
       "inject": true,
       "hotSwitch": false,
-      "patch": true,
-      "launcher": "claude --system-prompt-file <persona>；残留 62 字身份句需 patch-claude.mjs 抹平",
+      "patch": false,
+      "launcher": "claude --system-prompt-file <persona>；宿主 SDK 在文件之外还会拼一句身份，本地入口改不到",
       "defaultSystemChars": 6379,
       "purgedSystemChars": 156,
       "measuredVersion": "2.1.304",
       "verify": "capture.mjs",
-      "residue": "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+      "residue": "You are a Claude agent, built on Anthropic's Claude Agent SDK.（宿主 SDK 硬编码，本地入口删不掉；本仓库没有实现二进制补丁）",
       "modes": [
         "replace",
         "append"
@@ -315,6 +346,12 @@
         },
         "note": "sys 通过（需带人设词种子）",
         "preferredMode": "replace"
+      },
+      "purgeKind": "partial",
+      "safety": {
+        "off": 3,
+        "purged": 0,
+        "note": "off 态 27237 字含 IMPORTANT 段：拒答 DoS/大规模针对/供应链破坏/检测规避，并要求把疑似 prompt injection 上报用户；replace 后仅剩 SDK 拼的 62 字身份句 + 人设"
       }
     },
     "grok": {
@@ -350,6 +387,11 @@
         },
         "note": "sys 通过",
         "preferredMode": "replace"
+      },
+      "safety": {
+        "off": 0,
+        "purged": 0,
+        "note": "零安全条款"
       }
     },
     "omp": {
@@ -382,6 +424,11 @@
         "userBlockedReason": "user 层 CLI 段错误（exit 0xC0000005），该层对该 harness 不可测",
         "note": "sys 部分通过（50%），建议加种子",
         "preferredMode": "replace"
+      },
+      "safety": {
+        "off": 0,
+        "purged": 0,
+        "note": "零安全条款"
       }
     },
     "hermes": {
@@ -428,13 +475,13 @@
       "override": "install or app-server",
       "inject": true,
       "hotSwitch": false,
-      "patch": true,
+      "patch": false,
       "launcher": "桌面端内嵌 zcode.cjs（读 ~/.zcode/AGENTS.md 与 ~/.zcode/cli/config.json Hook；ContextBuilder 支持 customSystemPrompt）",
       "defaultSystemChars": 9359,
       "purgedSystemChars": 9359,
       "measuredVersion": "3.16.3（内核 bundle 同构开源 zcode-cli 0.16.x）",
       "verify": "内核 gks 静态断言 ~/.zcode/AGENTS.md 加载，ContextBuilder customSystemPrompt 与 UserPromptSubmit Hook 存在",
-      "residue": "cli_prefix 42 字总是存在",
+      "residue": "CLI 拿不到 customSystemPrompt：~/.zcode/AGENTS.md 只进用户上下文（armor 实测 sys=null），系统提示词 9359 → 9359 完全没变，等于没净化；本仓库没有实现 zcode.cjs 的等长补丁",
       "armor": {
         "probe": {
           "bare": {
@@ -456,11 +503,18 @@
       "modes": [
         "append"
       ],
-      "modesNote": "写入型通道：install 不读模式参数，正文以托管块追加在 AGENTS.md 末尾；三种模式输出一致，只保留 append"
+      "modesNote": "写入型通道：install 不读模式参数，正文以托管块追加在 AGENTS.md 末尾；三种模式输出一致，只保留 append",
+      "purgeKind": "append",
+      "safety": {
+        "off": null,
+        "purged": null,
+        "note": "本机未安装 CLI 二进制，未抓包；按 static 证据其 AGENTS.md 进不了 system 层（armor 实测 sys=null）"
+      }
     },
     "antigravity": {
       "class": "config",
-      "override": true,
+      "override": false,
+      "purgeKind": "append",
       "inject": true,
       "hotSwitch": false,
       "patch": false,
@@ -468,9 +522,15 @@
       "defaultSystemChars": 15378,
       "purgedSystemChars": 15895,
       "measuredVersion": "CLI 1.5.3 / desktop 1.23.x",
-      "verify": "隔离 HOME 真实二进制抓包：off/strict/replace/append 四模式均捕获主请求，marker 全落 systemInstruction（system 15378 → 15895/15844/15843 字），<user_rules> 位于 </identity> 之后；真模型三问均自称新人设",
-      "residue": "<identity> 段仍在提示词里（\"You are Antigravity, ...\"），靠 <user_rules> 的 take-precedence 声明压住",
-      "preferredMode": "strict"
+      "verify": "隔离 HOME 真实二进制抓包：off/strict/replace/append 四模式均捕获主请求，marker 全落 systemInstruction（system 15378 → 15895/15844/15843 字），<user_rules> 位于 </identity> 之后；真模型三问均自称新人设；注意 purged 字数高于 default，这一家是追加型（宿主身份仍在 system 里）",
+      "residue": "<identity> 段完整保留（\"You are Antigravity, ...\"）：purged 15895 > default 15378，净增 517 字，是 append 不是替换；真删只有二进制等长替换或手动选自定义 agent",
+      "preferredMode": "replace",
+      "modesNote": "四种模式都只是追加：strict / replace / append 分别净增 517 / 466 / 465 字，没有一个删得掉宿主的 <identity>。想真删只能走 agents/*.md + --agent，或二进制等长替换",
+      "safety": {
+        "off": 0,
+        "purged": 0,
+        "note": "15824 字里零安全/拒答条款：只有 <identity>、<guidelines>、<artifacts>、<subagents>、<skills> 与工具说明；purge 无对象可删"
+      }
     },
     "codebuddy": {
       "purgedSystemChars": null,
@@ -505,6 +565,11 @@
         },
         "note": "sys 通过",
         "preferredMode": "replace"
+      },
+      "safety": {
+        "off": 13,
+        "purged": 0,
+        "note": "off 态 17262 字里含完整 <content_policy>：政治敏感、色情、违法（武器/爆炸物/未授权入侵/欺诈/洗钱/毒品）、隐私泄露、诽谤，逐条 MUST refuse；replace 后 system 仅剩 120 字人设，整块消失"
       }
     },
     "workbuddy": {
@@ -519,7 +584,8 @@
       "measuredVersion": "5.9.3",
       "verify": "本机真实桌面会话验证（5.9.3，CDP 发问）：app-config.json 写入人设后回答“阿绿”；只写 settings.json 时回答“阿紫”；两者都写时回答“阿绿”，确认 app-config.json 优先",
       "note": "腾讯桌面端；原生身份槽位 personalization.customPrompt，AppConfigService 主存 ~/.workbuddy/app/app-config.json，settings.json 只作 legacy 回落；名字/人设设定是 WorkBuddy 云端个人配置，agent-purge 不写入",
-      "preferredMode": "replace"
+      "preferredMode": "replace",
+      "purgeKind": "unverified"
     },
     "workbuddy-ai": {
       "class": "config",
@@ -533,7 +599,8 @@
       "measuredVersion": "5.9.4",
       "verify": "本机真实桌面会话验证（5.9.4，CDP 发问）：app-config.json 写入人设后回答“小满”；写入 settings.json 被忽略（回答仍是面板旧值），确认主路径是 app-config.json；IDENTITY.md/SOUL.md 同步生效；卸载后 app-config.json 与 user-* 文件字节还原",
       "note": "腾讯桌面端国际版 WorkBuddy AI（workbuddy.ai）；身份槽位是 personalization.customPrompt，AppConfigService 主存 ~/.workbuddy-ai/app/app-config.json，settings.json 只作 legacy 回落；无需解包 app.asar",
-      "preferredMode": "replace"
+      "preferredMode": "replace",
+      "purgeKind": "unverified"
     },
     "kilo": {
       "class": "config",
@@ -548,7 +615,13 @@
       "verify": "隔离 HOME 真实二进制抓包：off/strict/replace/append 四模式均捕获主请求，marker 全落 system 层；source 级确认 soul() 仍前置 You are Kilo",
       "residue": "宿主 soul() 仍会前置 “You are Kilo” 身份",
       "note": "Kilo Code CLI/VS Code；原生 agent Markdown 配置，无需改二进制",
-      "preferredMode": "replace"
+      "preferredMode": "replace",
+      "purgeKind": "partial",
+      "safety": {
+        "off": 1,
+        "purged": 0,
+        "note": "off 态唯一命中是「如果帮不上就直接给替代方案、别讲大道理」——反向条款，不是安全限制；replace 后归零"
+      }
     }
   },
   "armorTarget": "https://api.deepseek.com/v1 · deepseek-flash",
