@@ -90,7 +90,7 @@ const whereLabel = scope => {
   if (scope?.kind === 'isolated-session') return pick(`临时会话${scope.profile ? ` · ${scope.profile}` : ''}`, `Isolated session${scope.profile ? ` · ${scope.profile}` : ''}`);
   return pick('临时环境', 'Isolated env');
 };
-const mode = () => draft?.mode || 'replace';
+const mode = () => document.querySelector('[name=mode]:checked')?.value || draft?.mode || 'replace';
 const configDirty = () => draft && base && changed(draft, base);
 const editorValue = () => ({ id: $('edit-id').value.trim(), meta: { name: $('edit-name').value.trim(), description: $('edit-desc').value.trim(), model: $('edit-model').value }, body: $('edit-body').value });
 const editorDirty = () => editor !== null && JSON.stringify(editorValue()) !== editorBaseline;
