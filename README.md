@@ -20,7 +20,7 @@
   </a>
 </p>
 
-[快速开始](#快速开始) · [界面一览](#界面一览) · [人设与模式](#人设与模式) · [应用范围](#应用范围) · [支持情况](#支持情况) · [暂停与卸载](#暂停与卸载) · [免责与合规声明](#免责与合规声明)
+[文档站](https://zichuanlan.github.io/agent-purge/) · [快速开始](#快速开始) · [界面一览](#界面一览) · [人设与模式](#人设与模式) · [应用范围](#应用范围) · [支持情况](#支持情况) · [暂停与卸载](#暂停与卸载) · [免责与合规声明](#免责与合规声明)
 
 </div>
 
@@ -80,7 +80,7 @@ agent-purge web
 
 下载附件以实际 [GitHub Releases](https://github.com/ZiChuanLan/agent-purge/releases) 为准；未发布的版本没有附件。请核对 SHA-256 和签名状态，未签名程序可能出现系统提示。ZIP 中的 EXE 是薄启动器，不是自带运行时的独立版。
 
-SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux 可用 npm / 源码入口或 Release 里的二进制、`.tar.gz`、`.deb`（AppImage 随 runner 能力可选生成），macOS 可用 npm / 源码或 `.dmg` 镜像（`.dmg` 未经 Apple 签名与公证）。平台验证范围见[兼容性说明](docs/compatibility.md)。
+SSH / WSL 等无桌面环境使用 `agent-purge web --no-open`。Web 仅监听本机；Linux 可用 npm / 源码入口或 Release 里的二进制、`.tar.gz`、`.deb`（AppImage 随 runner 能力可选生成），macOS 可用 npm / 源码或 `.dmg` 镜像（`.dmg` 未经 Apple 签名与公证）。平台验证范围见[兼容性说明](docs/reference/compatibility.md)。
 
 控制台右上角的版本角标点开就是升级入口，按安装形态自动选路：独立 EXE 下载并就地热替换、npm 全局安装调 `npm install -g`、**源码检出（`git clone` 后直接 `node bin/agent-purge.mjs`）在安装目录执行 `git pull --ff-only`**，不下载任何发布产物。源码检出的「有没有更新」按上游提交算，版本号没变也会提示；工作区有未提交改动、处于游离 HEAD 或分支没有上游时一律拒绝并说明原因。
 
@@ -125,7 +125,7 @@ description: 中文、先结论、修改前先读代码
 修改代码前先阅读现有实现；不确定时明确说明。
 ```
 
-只有正文进入提示词。`description` 用于列表说明，旧键 `desc` 仍兼容；Web 编辑会保留未涉及的元数据。高级匹配、排序与数据目录配置见[使用指南](docs/usage.md#人设文件)。
+只有正文进入提示词。`description` 用于列表说明，旧键 `desc` 仍兼容；Web 编辑会保留未涉及的元数据。高级匹配、排序与数据目录配置见[使用指南](docs/reference/cli.md#人设文件)。
 
 也可参考维护者的 [some-magic 人设仓库](https://github.com/ZiChuanLan/some-magic)。
 
@@ -162,36 +162,15 @@ agent-purge status
 **使用 magpie 网关？** 可选插件位于 `magpie-plugin/`，不是仓库根目录。安装方法和网关改写边界见 [magpie 插件说明](magpie-plugin/README.md)。
 
 ## 支持情况
+**一句话结论**：宿主提供整段 system prompt 入口的（Codex、OpenCode、DSH、Claude、Gemini CLI、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）是真替换；Claude 与 Kilo 有残留；Antigravity、Crush、Continue、Auggie、Goose、zcode 只能追加，原生身份仍在提示词里。
 
-以下为支持范围与当前验证程度；请求级验证只覆盖表中明确说明的宿主，不是对所有版本的兼容承诺。
+逐家的接管通道、热切时机、实测字数、内置安全条款与残留说明都在文档站：
 
-| 执行器 / 宿主 | 已验证版本 | 主要接管通道 | 同会话热切 | 验证状态与实测说明 |
-|---|---|---|---|---|
-| pi / omp | 1.4.0 / 18.14.1 | 会话扩展 / 插件 | 支持（`/purge` 热切） | 动态扩展已实测；四模式抓包通过 |
-| OpenCode 1.x / 2.x | 1.19.5 / 2.2.5 | 插件机制 | 支持（同会话注入） | 插件挂载已实测 |
-| DSH (DeepSeek Harness) | 0.2.1-rc.5 | 配置 / SDK / 插件 | 支持（SDK 同会话） | headless/web/desktop 三形态四模式已抓包 |
-| Codex | 0.166.0 | 启动参数 / 规则文件 | 需新会话 | 启动入口已验证；固定替换身份 |
-| Claude Code | 2.1.316 | 启动参数 / 规则文件 | 需新会话 | 启动入口与 `CLAUDE.md` 规则已验证；支持替换与追加 |
-| CodeBuddy / Grok | 2.179.0 / 1.0.73 | 启动入口 / 规则文件 | 需新会话 | 启动参数与配置文件已验证 |
-| Qwen Code | 0.27.2 | 启动参数 (`--system-prompt` / `--append-system-prompt`) | 需新会话 | 启动参数已验证，支持整段覆盖与末尾追加；长人设受命令行长度限制 |
-| Gemini CLI | 0.68.0 | 环境变量 (`GEMINI_SYSTEM_MD`) | 需新会话 | 真实包 `PromptProvider` 替换 core system prompt 已验证 |
-| Crush | v0.100.0 | 全局规则 (`CRUSH.md`) / AGENTS.md | 需新会话 | 真实 Windows release 实测；追加系统上下文，写托管块原子可逆 |
-| Continue CLI | 1.5.47 | 启动参数 (`--rule`) | 需新会话 | 真实安装 `@continuedev/cli`；`--rule` 追加规则/上下文 |
-| Qoder CLI | 1.1.87 | 启动参数 (`--system-prompt` / `--append-system-prompt`) | 需新会话 | 真实安装 `@qoder-ai/qodercli`；两个参数入口已验证，支持替换与追加 |
-| Kimi Code | 2.5.3 | 启动参数 (`--agent-file`) | 需新会话 | 真实安装 `@moonshot-ai/kimi-code`；Markdown 正文作为 system prompt 替换 |
-| Auggie CLI | 0.37.1 | 启动参数 (`--rules`) | 需新会话 | 真实安装 `@augmentcode/auggie`；`--rules` 追加规则/上下文 |
-| Goose | 1.59.0 | 启动参数 (`session/run --system`) | 需新会话 | 真实 release 实测；`--system` 追加系统指令，BYOK 跑通 |
-| Kiro CLI | 3.2.0 | 启动参数 (`--agent`) / Custom Agent | 需新会话 | `--agent` 参数与自定义 agent `prompt` 字段替换已实测 |
-| Kilo Code | @kilocode/cli 7.8.18 | 配置覆盖 (`code.md`) / AGENTS.md | 需新会话 | off/strict/replace/append 四模式真实抓包；system 层 marker=1 |
-| Antigravity (agy) | CLI 1.5.3 / 语言服务 1.23.x | 全局规则 (`~/.gemini/config/AGENTS.md`) | 需新会话 | 四模式真实抓包；落 system 层 `<user_rules>`，规则段优先级压住 |
-| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 配置文件写入 (`app-config.json`) | 需新会话 | 国际版与国内版上下文写入已实测 |
-| PI-Desktop | 0.21.0（便携版） | 常驻配置 (`SYSTEM.md`) / 导入插件 | 支持（插件同会话下一轮生效） | 常驻配置写入与 imported 插件热切已实测 |
+- [支持情况](https://zichuanlan.github.io/agent-purge/reference/support) —— 净化方式分级、安全条款实测、支持矩阵
+- [兼容性与已知限制](https://zichuanlan.github.io/agent-purge/reference/compatibility) —— 逐家四模式抓包结论与已知坑
+- [命令行参考](docs/reference/cli.md) —— 完整参数、人设文件格式、卸载步骤
 
-Cursor、Devin CLI、Copilot CLI、Amp、Cline、Roo Code、Gemini CLI、Qwen Code、Crush 的规则文件已接入「规则文件」页；其中 Cursor / Devin / Copilot / Amp / Cline / Roo 只写规则，不替换主 agent 的 system prompt。Muse Code 目前没有可安装的 CLI，暂不接入。
-
-首次安装或更新插件代码后，仍需重新加载宿主。**配置写入、历史测试通过、当前会话实际生效，是不同状态。**
-
-Windows 与 WSL/Linux 已执行回归，macOS 尚待实机验证。Hermes、zcode 未计为本轮通过。请求角色、宿主残留、浏览器覆盖与已知安装问题统一记录在[兼容性与限制](docs/compatibility.md)，不以模型自称身份作为验收依据。
+请求角色、宿主残留、浏览器覆盖与已知安装问题统一记录在兼容性文档；**不以模型自称身份作为验收依据**。首次安装或更新插件代码后仍需重新加载宿主——配置写入、历史测试通过、当前会话实际生效是不同状态。Windows 与 WSL/Linux 已执行回归，macOS 尚待实机验证。
 
 ## 暂停与卸载
 
@@ -211,7 +190,7 @@ npm uninstall -g agent-purge
 
 Windows 安装器卸载也会先撤销接管并保留人设。发生恢复冲突时，保留报错指出的文件和凭据，先比较修改再处理；不要直接删除备份。历史会话中已经发送的内容无法撤回。
 
-需要永久删除数据时，先备份，再按[完整卸载说明](docs/usage.md#暂停撤销和卸载)操作；`self-uninstall --yes` 与普通卸载不同。
+需要永久删除数据时，先备份，再按[完整卸载说明](docs/reference/cli.md#暂停撤销和卸载)操作；`self-uninstall --yes` 与普通卸载不同。
 
 ## 隐私与使用边界
 
@@ -230,10 +209,10 @@ npm test
 
 | 文档 | 内容 |
 |---|---|
-| [使用指南](docs/usage.md) | 人设文件、分家配置、通道、项目规则、恢复与常见问题 |
-| [兼容性与限制](docs/compatibility.md) | 实测版本、平台范围、请求证据与已知问题 |
+| [使用指南](docs/reference/cli.md) | 人设文件、分家配置、通道、项目规则、恢复与常见问题 |
+| [兼容性与限制](docs/reference/compatibility.md) | 实测版本、平台范围、请求证据与已知问题 |
 | [参与开发](CONTRIBUTING.md) | 目录结构、测试命令与提交规范 |
-| [架构约定](docs/architecture.md) | 模块边界、配置语义和界面规范 |
+| [架构约定](docs/reference/architecture.md) | 模块边界、配置语义和界面规范 |
 | [发布流程](docs/releasing.md) | 构建、安装验收与发行检查 |
 
 回归测试保留在 `test/`，临时日志与构建产物不进入源码仓库。

@@ -1,6 +1,6 @@
 # 使用指南
 
-[返回项目首页](../README.md)
+[返回项目首页](/)
 
 ## 选择人设
 
@@ -59,7 +59,7 @@ agent-purge mode follow --for codex
 
 `codex / claude / grok / codebuddy / hermes` 的 CLI 启动入口没有宿主文本读取口，`replace` 按 `strict` 执行，并在终端提示。希望保留宿主说明时可选择 `append`。
 
-CLI 的 `append` 将人设放在后面；[magpie 插件](../magpie-plugin/README.md)放在前面。实际角色可能是 `system`、`developer` 或项目上下文，详见[兼容性](compatibility.md)。
+CLI 的 `append` 将人设放在后面；[magpie 插件](https://github.com/ZiChuanLan/agent-purge/blob/main/magpie-plugin/README.md)放在前面。实际角色可能是 `system`、`developer` 或项目上下文，详见[兼容性](compatibility.md)。
 
 ## 单次启动
 

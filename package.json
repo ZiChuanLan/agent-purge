@@ -20,9 +20,9 @@
     "matrix.json",
     "README.md",
     "CONTRIBUTING.md",
-    "docs/usage.md",
-    "docs/compatibility.md",
-    "docs/architecture.md",
+    "docs/reference",
+    "docs/guide",
+    "docs/index.md",
     "docs/releasing.md",
     "docs/LEGAL.md",
     "docs/images",
@@ -48,7 +48,10 @@
     "test:ui": "playwright test",
     "test:package": "node scripts/check-package.mjs",
     "test:artifacts": "node scripts/check-artifacts.mjs",
-    "release:checksums": "node scripts/release-checksums.mjs"
+    "release:checksums": "node scripts/release-checksums.mjs",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "keywords": [
     "system-prompt",
@@ -73,6 +76,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
-    "@playwright/test": "1.64.1"
+    "@playwright/test": "1.64.1",
+    "vitepress": "1.6.4"
   }
 }

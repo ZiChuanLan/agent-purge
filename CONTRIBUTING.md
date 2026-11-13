@@ -61,4 +61,4 @@ Windows 可用已有 Edge：`$env:PLAYWRIGHT_CHANNEL='msedge'; npm run test:ui -
 - `docs/images/` 只保留当前产品截图；图标仅保留代码实际使用的版本。
 - 提交前检查 `git status --short` 与 `git diff --check`，勿直接提交所有本地文件。
 
-CI 会运行仓库检查与测试，但不会代替代码审查或自动发布。[架构约定](docs/architecture.md) · [发布流程](docs/releasing.md)
+CI 会运行仓库检查与测试，但不会代替代码审查或自动发布。[架构约定](docs/reference/architecture.md) · [发布流程](docs/releasing.md)

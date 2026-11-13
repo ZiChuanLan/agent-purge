@@ -1,6 +1,6 @@
 # 兼容性与已知限制
 
-[返回项目首页](../README.md)
+[返回项目首页](/)
 
 以下是 **2026-11-01 的本地验收快照**，只适用于列出的版本；不代表所有宿主版本或远端发行包均通过。
 
@@ -34,6 +34,24 @@
 - Kilo Code `@kilocode/cli` 7.8.18：`~/.config/kilo/agent/code.md`（replace/strict）与 `AGENTS.md`（append）通道；2026-11-02 隔离 HOME 真实二进制抓包 `off/strict/replace/append` 四模式均捕获主请求，marker 全落 system 层（system 13717→5442/5353/13975 字）；源码确认 `soul()` 仍前置 `You are Kilo`。
 - `opencode`（`opencode-ai` 1.x）与 `opencode2`（`@opencode/cli` 2.x）是不同接口，不能混用插件。
 - 不支持注入的闭源桌面入口不会标为注入成功；有些只能原样启动，有些会明确拒绝。
+
+### 内置安全条款实测（2026-11-13）
+
+「净化」到底删掉了什么，取决于宿主把安全条款写在哪。11 家隔离 HOME 四模式抓包，对 off 态 system 与 purge 后 system 分别统计「拒答 / 内容政策 / 越狱防护 / 有害用途」类条款冲突数：
+
+| 执行器 | off 态 system | 内置安全条款 | purge 后 | 说明 |
+|---|---|---|---|---|
+| codebuddy | 17,262 | 13 | 0 | 完整 `<content_policy>`：政治敏感、色情、违法（武器/爆炸物/未授权入侵/欺诈/洗钱/毒品）、隐私、诽谤，逐条 MUST refuse |
+| claude | 27,237 | 3 | 0 | 拒答 DoS / 大规模针对 / 供应链破坏 / 检测规避；要求上报疑似 prompt injection |
+| kilo | 13,717 | 1 | 0 | 唯一命中是反向的「帮不上就直接给替代方案、别讲大道理」，不是安全限制 |
+| opencode | 14,351 | 1 | 0 | 同上，反向表述 |
+| codex | 23,759 | 0 | 0 | 唯一 policy 命中是 Approval policy（沙箱权限说明），不是内容政策 |
+| antigravity | 15,824 | 0 | 0 | 只有 `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>`，没有安全条款可删 |
+| dsh / grok / omp / opencode2 / pi | — | 0 | 0 | 系统提示词内无安全条款 |
+
+**结论**：内置安全条款真实存在的只有 CodeBuddy 与 Claude，两家都在 replace 后归零——该删的删干净了。Antigravity 的提示词里一条都没有，它被拦在 Google 的 policy 分类器侧，不在本地提示词层，因此不在 purge 的能力范围内。zcode 未安装 CLI，未抓包。
+
+口径：只统计强信号正则（refuse / content policy / harmful / jailbreak / weapons 等），不统计 `must not` 这类编码规范表述。机器可读数据在 `matrix.json` 的 `safety` 字段，测试会校验它与 `purgeKind` 不矛盾。
 
 ## 系统、浏览器与发行形式
 
@@ -82,4 +100,4 @@ node bench/capture-system.mjs --hot --no-publish
 
 真实宿主测试需先安装相应宿主。原始请求和日志进入被 Git 忽略的 `out/`；`--no-publish` 不替换用户已有 Web 验证报告。HTTP 代理隔离不等于操作系统网络沙箱。
 
-版本表只保留便于维护的结论；原始诊断、截图迭代和逐文件哈希不进入源码仓库。每次发布的证据应随对应 CI artifact 保存，见[发布流程](releasing.md)。
+版本表只保留便于维护的结论；原始诊断、截图迭代和逐文件哈希不进入源码仓库。每次发布的证据应随对应 CI artifact 保存，见[发布流程](../releasing.md)。

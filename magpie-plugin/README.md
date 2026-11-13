@@ -44,4 +44,4 @@ magpie plugin options magpie-plugin '{"mode":"append"}'
 - 插件页不能直接读取本地文件，人设列表由生成脚本提供。
 - `npm test` 包含钩子与页面逻辑回归，不依赖 magpie；这些测试不等于所有 magpie 版本的真实安装验收。
 
-[主项目](../README.md) · [使用指南](../docs/usage.md)
+[主项目](../README.md) · [使用指南](../docs/reference/cli.md)

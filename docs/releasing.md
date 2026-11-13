@@ -13,7 +13,7 @@ npx playwright install chromium firefox webkit
 npm run test:ui
 ```
 
-同时审核[兼容性与已知限制](compatibility.md)。原始测试输出放在 `out/`，不要提交截图过程稿、缓存、私人配置或测试安装目录。
+同时审核[兼容性与已知限制](reference/compatibility.md)。原始测试输出放在 `out/`，不要提交截图过程稿、缓存、私人配置或测试安装目录。
 
 ## Windows 构建
 
@@ -72,7 +72,7 @@ ZIP 里的 `agent-purge.exe` 是薄启动器，**不是**独立 EXE。安装器�
 4. 恢复冲突时停止卸载并保留凭据。
 5. 修复后卸载，核对人设与原配置字节、注册表和快捷方式。
 
-本机隔离测试不等于全新系统。发布前还需检查低版本 Node、GUI 提示、SmartScreen、跨版本升级、权限不足和[已知覆盖安装问题](compatibility.md#已知发布限制)。
+本机隔离测试不等于全新系统。发布前还需检查低版本 Node、GUI 提示、SmartScreen、跨版本升级、权限不足和[已知覆盖安装问题](reference/compatibility.md#已知发布限制)。
 
 ## CI
 
@@ -105,4 +105,4 @@ tag 推送会触发 `release.yml`：
 
 需要重跑时使用 Actions 的 `workflow_dispatch`，输入已存在的 tag；发布是幂等的，不会重复上传同版本 npm 包，Release 附件使用 `--clobber` 覆盖。
 
-正式发行前核对 [LICENSE](../LICENSE)、README 和[免责与合规声明](LEGAL.md)的表述。软件继续采用 MIT 许可；使用声明用于说明风险与责任，不附加相冲突的授权限制。修改声明时应同步 README 中的完整文本。
+正式发行前核对 [LICENSE](https://github.com/ZiChuanLan/agent-purge/blob/main/LICENSE)、README 和[免责与合规声明](LEGAL.md)的表述。软件继续采用 MIT 许可；使用声明用于说明风险与责任，不附加相冲突的授权限制。修改声明时应同步 README 中的完整文本。

@@ -24,6 +24,11 @@ magpie-plugin/page/personas.js
 /web/shots/
 /docs/evidence/
 
+
+# VitePress build cache and generated site
+/.vitepress/
+/docs/.vitepress/cache/
+/docs/.vitepress/dist/
 # Local agent sessions, experiments and notes
 /.pi/
 /.opencode/

@@ -20,7 +20,7 @@ English | [日本語](README.ja.md) | [简体中文](README.md)
   </a>
 </p>
 
-[Quick Start](#quick-start) · [Personas & Modes](#personas-and-modes) · [Application Scopes](#application-scopes) · [Supported Harnesses](#supported-harnesses) · [Pause & Uninstall](#pause-and-uninstall) · [Legal & Disclaimer](#legal-and-disclaimer)
+[Docs](https://zichuanlan.github.io/agent-purge/en/) · [Quick Start](#quick-start) · [Personas & Modes](#personas-and-modes) · [Application Scopes](#application-scopes) · [Supported Harnesses](#supported-harnesses) · [Pause & Uninstall](#pause-and-uninstall) · [Legal & Disclaimer](#legal-and-disclaimer)
 
 </div>
 
@@ -131,32 +131,15 @@ agent-purge status
 `arm <h>` attempts to enable all compatible persistent, shim, and slash channels for that harness. Project-level rule channels are managed separately.
 
 ## Supported Harnesses
+**In one line**: hosts that expose a full system-prompt entry point (Codex, OpenCode, DSH, Claude, Gemini CLI, Qwen, Qoder, Kimi, Kiro, CodeBuddy, Grok, omp) get a real replacement; Claude and Kilo leave residue; Antigravity, Crush, Continue, Auggie, Goose and zcode are append-only, so the native identity stays in the prompt.
 
-The following table summarizes verification status across supported agents. Request-level verification confirms prompt presence in actual outgoing network requests under isolated providers.
+Channels, hot-switch timing, measured sizes, built-in safety clauses and residue per harness live on the docs site:
 
-| Harness / Host | Verified Version | Primary Takeover Channel | In-Session Hot-Switch | Verification Status & Notes |
-|---|---|---|---|---|
-| pi / omp | 1.4.0 / 18.14.1 | Session extension / plugin | Supported (`/purge` switch) | Dynamic extension tested; 4-mode packet captures verified |
-| OpenCode 1.x / 2.x | 1.19.5 / 2.2.5 | Plugin mechanism | Supported (in-session) | Plugin mount tested |
-| DSH (DeepSeek Harness) | 0.2.1-rc.5 | Config / SDK / Plugin | Supported (SDK in-session) | Headless/web/desktop forms verified across 4 modes |
-| Codex | 0.166.0 | CLI flag / Rule files | New session required | Entry point verified; fixed system prompt replacement |
-| Claude Code | 2.1.316 | CLI flag / Rule files | New session required | Entry point and `CLAUDE.md` rules verified; replace/append supported |
-| CodeBuddy / Grok | 2.179.0 / 1.0.73 | CLI flag / Rule files | New session required | CLI launch and config rules verified |
-| Qwen Code | 0.27.2 | CLI flag (`--system-prompt` / `--append-system-prompt`) | New session required | CLI flags verified; supports full replacement and append |
-| Gemini CLI | 0.68.0 | Env var (`GEMINI_SYSTEM_MD`) | New session required | Real package verified; `PromptProvider` replaces core system prompt |
-| Crush | v0.100.0 | Global rule (`CRUSH.md`) / AGENTS.md | New session required | Tested on real release; appends system context with atomic rollback |
-| Continue CLI | 1.5.47 | CLI flag (`--rule`) | New session required | Tested with real `@continuedev/cli`; appends rule context |
-| Qoder CLI | 1.1.87 | CLI flag (`--system-prompt` / `--append-system-prompt`) | New session required | Tested with real `@qoder-ai/qodercli`; replace and append verified |
-| Kimi Code | 2.5.3 | CLI flag (`--agent-file`) | New session required | Tested with real `@moonshot-ai/kimi-code`; Markdown body replaces system prompt |
-| Auggie CLI | 0.37.1 | CLI flag (`--rules`) | New session required | Tested with real `@augmentcode/auggie`; appends rule context |
-| Goose | 1.59.0 | CLI flag (`session/run --system`) | New session required | Tested with real release; `--system` appends system directives, BYOK verified |
-| Kiro CLI | 3.2.0 | CLI flag (`--agent`) / Custom Agent | New session required | Tested with custom agent; `prompt` field replaces system prompt |
-| Kilo Code | @kilocode/cli 7.8.18 | Config file (`code.md`) / AGENTS.md | New session required | 4 modes verified with live captures; system layer marker=1 |
-| Antigravity (agy) | CLI 1.5.3 / LS 1.23.x | Global rule (`~/.gemini/config/AGENTS.md`) | New session required | 4 modes verified; injected into `<user_rules>` system section |
-| WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | Config write (`app-config.json`) | New session required | Domestic and international config writing verified |
-| PI-Desktop | 0.21.0 | Persistent config (`SYSTEM.md`) / Plugin | Supported (in-session next turn) | Persistent config and imported plugin tested |
+- [Support matrix](https://zichuanlan.github.io/agent-purge/en/reference/support) — purge kinds, measured safety clauses, full matrix
+- [Compatibility and limits](https://zichuanlan.github.io/agent-purge/reference/compatibility) — per-harness four-mode capture conclusions and pitfalls (Chinese)
+- [CLI reference](docs/reference/cli.md) — full flags, persona file format, uninstall steps
 
-Detailed compatibility notes, request role mappings, and known limitations are documented in [docs/compatibility.md](docs/compatibility.md).
+Request roles, host residue, browser coverage and known install issues are recorded in the compatibility document; **a model calling itself by the persona name is not acceptance evidence**. After installing or updating plugin code the host still needs a reload — config written, tests passing and taking effect in the current session are different states. Windows and WSL/Linux regression runs are done; macOS is still pending on real hardware.
 
 ## Pause and Uninstall
 
