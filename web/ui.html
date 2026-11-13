@@ -1,24 +1,25 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
+<meta name="ap-locale" content="">
 <meta name="ap-server-gen" content="">
-<title>agent-purge · 提示词控制台</title>
+<title>agent-purge · Prompt Console</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M13.5 6.5 4 16l9.5 9.5 4.8-4.8L13.6 16l4.7-4.7-4.8-4.8Z' fill='%230F172A'/%3E%3Cpath d='M20.5 10.8 25.7 16l-5.2 5.2L15.3 16l5.2-5.2Z' fill='%232563EB'/%3E%3Cpath d='M21.8 5.2 28.4 11.8l-2.3 2.3-6.6-6.6 2.3-2.3Z' fill='%2394A3B8'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#F7F8FA">
 <link rel="stylesheet" href="/styles.css">
 <script type="module" src="/app.js"></script>
 </head>
 <body>
-<a class="skip" href="#main">跳到主要内容</a>
+<a class="skip" href="#main" data-i18n="skip.main">Skip to main content</a>
 
 <div class="shell">
   <header class="topbar">
     <div class="topbar-inner">
       <div class="topbar-left">
-        <a class="brand" href="#console" aria-label="agent-purge 控制台">
+        <a class="brand" href="#console" aria-label="agent-purge console" data-i18n-attr="aria-label:brand.aria">
           <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
             <path class="mark-shell" d="M13.5 6.5 4 16l9.5 9.5 4.8-4.8L13.6 16l4.7-4.7-4.8-4.8Z"/>
             <path class="mark-core" d="M20.5 10.8 25.7 16l-5.2 5.2L15.3 16l5.2-5.2Z"/>
@@ -26,20 +27,21 @@
           </svg>
           <span class="brand-name">agent-purge</span>
         </a>
-        <nav class="tabs" aria-label="主要导航">
-          <button type="button" data-page="console" aria-current="page">控制台</button>
-          <button type="button" data-page="library">人设库</button>
-          <button type="button" data-page="project">规则文件</button>
-          <button type="button" data-page="diagnostics">测试与记录</button>
+        <nav class="tabs" aria-label="Primary navigation" data-i18n-attr="aria-label:nav.aria">
+          <button type="button" data-page="console" aria-current="page" data-i18n="nav.console">Console</button>
+          <button type="button" data-page="library" data-i18n="nav.library">Personas</button>
+          <button type="button" data-page="project" data-i18n="nav.project">Rule Files</button>
+          <button type="button" data-page="diagnostics" data-i18n="nav.diagnostics">Tests &amp; Logs</button>
+          <button type="button" data-page="settings" data-i18n="nav.settings">Settings</button>
         </nav>
       </div>
       <div class="topbar-right">
-        <span id="connection" class="conn"><span class="conn-dot" aria-hidden="true"></span><span id="connection-text">正在连接本地服务</span></span>
-        <button type="button" id="version-badge" class="version" title="检查更新">版本加载中</button>
-        <button type="button" id="refresh" class="icon-btn" title="刷新状态" aria-label="刷新状态">
+        <span id="connection" class="conn"><span class="conn-dot" aria-hidden="true"></span><span id="connection-text" data-i18n="conn.connecting">Connecting to local service</span></span>
+        <button type="button" id="version-badge" class="version" title="Check for updates" data-i18n="version.loading" data-i18n-attr="title:version.checkTitle">Loading…</button>
+        <button type="button" id="refresh" class="icon-btn" title="Refresh status" aria-label="Refresh status" data-i18n-attr="title:refresh.title,aria-label:refresh.title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
         </button>
-        <button type="button" id="exit-btn" class="icon-btn" title="退出 agent-purge 本地服务并关闭窗口" aria-label="退出程序">
+        <button type="button" id="exit-btn" class="icon-btn" title="Stop local agent-purge service and close window" aria-label="Exit application" data-i18n-attr="title:exit.title,aria-label:exit.aria">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -55,51 +57,51 @@
           <div class="command-top">
             <div class="command-persona">
               <div class="persona-topline">
-                <h2 id="persona-title" class="field-label">当前人设</h2>
+                <h2 id="persona-title" class="field-label" data-i18n="console.currentPersona">Current Persona</h2>
                 <strong id="current-persona" class="persona-name">—</strong>
-                <span id="current-mode" class="persona-meta">正在读取…</span>
+                <span id="current-mode" class="persona-meta" data-i18n="console.reading">Loading…</span>
               </div>
-              <p id="persona-description" class="persona-desc">正在读取人设说明…</p>
+              <p id="persona-description" class="persona-desc" data-i18n="console.readingDesc">Loading persona description…</p>
               <div class="persona-actions">
-                <label class="persona-switch" title="更换当前人设">
-                  <span>更换人设</span>
+                <label class="persona-switch" title="Switch Persona" data-i18n-attr="title:console.switchPersona">
+                  <span data-i18n="console.switchPersona">Switch Persona</span>
                   <svg viewBox="0 0 12 12" width="11" height="11" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  <select id="persona-select" disabled aria-label="更换人设"></select>
+                  <select id="persona-select" disabled aria-label="Switch Persona" data-i18n-attr="aria-label:console.switchPersona"></select>
                 </label>
                 <span class="action-sep" aria-hidden="true"></span>
-                <button type="button" id="edit-current" class="link">编辑正文</button>
-                <button type="button" id="quick-new-btn" class="link">新建</button>
-                <button type="button" id="quick-pull-btn" class="link">从 GitHub 拉取</button>
+                <button type="button" id="edit-current" class="link" data-i18n="console.editBody">Edit</button>
+                <button type="button" id="quick-new-btn" class="link" data-i18n="console.newPersona">New</button>
+                <button type="button" id="quick-pull-btn" class="link" data-i18n="console.pullGithub">Pull from GitHub</button>
               </div>
             </div>
 
             <div class="command-status">
               <div class="scope-meter">
-                <p class="deck-scope"><strong id="scope-count">0</strong> / <span id="scope-total">0</span> 已接管</p>
+                <p class="deck-scope"><strong id="scope-count">0</strong> / <span id="scope-total">0</span> <span data-i18n="console.managedRatio">managed</span></p>
                 <span id="coverage-strip" class="coverage" aria-hidden="true"></span>
               </div>
               <div class="deck-power">
-                <span id="power-status" class="pill">正在读取</span>
-                <button type="button" id="power" class="btn btn-ghost" disabled>服务连接中…</button>
-                <button type="button" id="disarm-all" class="btn btn-ghost btn-quiet" title="撤销所有已启用的提示词配置，恢复原厂设置；不删除人设文件">全部撤销</button>
+                <span id="power-status" class="pill" data-i18n="console.powerReading">Loading</span>
+                <button type="button" id="power" class="btn btn-ghost" disabled data-i18n="console.powerConnecting">Connecting…</button>
+                <button type="button" id="disarm-all" class="btn btn-ghost btn-quiet" title="Revoke all enabled prompt configurations and restore original files; persona files are kept" data-i18n="console.disarmAll" data-i18n-attr="title:console.disarmAllTitle">Disarm All</button>
               </div>
             </div>
           </div>
 
           <div class="command-bottom">
             <div class="mode-field">
-              <span class="field-label" id="mode-label">默认力度</span>
+              <span class="field-label" id="mode-label" data-i18n="console.defaultMode">Default Mode</span>
               <div class="segmented" role="radiogroup" aria-labelledby="mode-label">
-                <label><input type="radio" name="mode" value="replace" checked><span>替换身份</span></label>
-                <label><input type="radio" name="mode" value="strict"><span>只留人设</span></label>
-                <label><input type="radio" name="mode" value="append"><span>末尾追加</span></label>
+                <label><input type="radio" name="mode" value="replace" checked><span data-i18n="mode.replace">Replace Identity</span></label>
+                <label><input type="radio" name="mode" value="strict"><span data-i18n="mode.strict">Persona Only</span></label>
+                <label><input type="radio" name="mode" value="append"><span data-i18n="mode.append">Append</span></label>
               </div>
-              <p class="mode-hint" id="mode-hint">只改助手对自己的认知，保留原厂工具与规范。</p>
+              <p class="mode-hint" id="mode-hint" data-i18n="mode.hintDefault">Replaces the assistant identity while keeping host tools and rules.</p>
             </div>
             <div class="apply-actions">
-              <span id="draft-state" class="draft-state">正在读取</span>
-              <button type="button" id="reset-config" class="btn btn-ghost" disabled>撤销改动</button>
-              <button type="submit" id="apply" class="btn btn-primary" form="config-form" disabled>应用变更</button>
+              <span id="draft-state" class="draft-state" data-i18n="console.powerReading">Loading</span>
+              <button type="button" id="reset-config" class="btn btn-ghost" disabled data-i18n="console.discardChanges">Discard</button>
+              <button type="submit" id="apply" class="btn btn-primary" form="config-form" disabled data-i18n="console.applyChanges">Apply Changes</button>
             </div>
           </div>
         </section>
@@ -112,37 +114,37 @@
           <div class="tools-head">
             <div class="tools-title-wrap">
               <div class="tools-title-row">
-                <h1 id="console-title">接管范围</h1>
-                <span id="harness-count" class="target-count">0 个目标</span>
+                <h1 id="console-title" data-i18n="console.scopeTitle">Managed Targets</h1>
+                <span id="harness-count" class="target-count">0 targets</span>
               </div>
-              <p id="scope-summary" class="tools-summary">正在检测本机已安装的 AI 客户端…</p>
+              <p id="scope-summary" class="tools-summary" data-i18n="console.detecting">Detecting installed AI clients…</p>
             </div>
             <div class="tools-controls">
               <label class="target-search">
                 <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <input id="harness-search" type="search" placeholder="搜索工具、命令或状态" autocomplete="off" aria-label="搜索接管目标">
+                <input id="harness-search" type="search" placeholder="Search tools, commands, or status" autocomplete="off" aria-label="Search managed targets" data-i18n-attr="placeholder:console.searchPlaceholder,aria-label:console.searchAria">
               </label>
-              <div class="target-filters" role="group" aria-label="筛选接管目标">
-                <button type="button" class="filter-chip is-active" data-filter="all" aria-pressed="true">全部</button>
-                <button type="button" class="filter-chip" data-filter="on" aria-pressed="false">已接管</button>
-                <button type="button" class="filter-chip" data-filter="ready" aria-pressed="false">可接管</button>
+              <div class="target-filters" role="group" aria-label="Filter managed targets" data-i18n-attr="aria-label:console.filterAria">
+                <button type="button" class="filter-chip is-active" data-filter="all" aria-pressed="true" data-i18n="console.filterAll">All</button>
+                <button type="button" class="filter-chip" data-filter="on" aria-pressed="false" data-i18n="console.filterOn">Managed</button>
+                <button type="button" class="filter-chip" data-filter="ready" aria-pressed="false" data-i18n="console.filterReady">Ready</button>
               </div>
-              <label class="check"><input type="checkbox" id="show-all">显示未安装</label>
-              <label class="sr-only" for="batch-actions-select">批量操作</label>
-              <select id="batch-actions-select" class="select select-compact" title="批量设置接管范围或模式">
-                <option value="">批量操作…</option>
-                <option value="enable-ready">开启所有已就绪工具</option>
-                <option value="disable-all">关闭全部接管</option>
-                <option value="mode-preferred">恢复各家推荐力度</option>
-                <option value="mode-replace">全部改为「替换身份」</option>
-                <option value="mode-strict">全部改为「只留人设」</option>
+              <label class="check"><input type="checkbox" id="show-all"><span data-i18n="console.showAll">Show uninstalled</span></label>
+              <label class="sr-only" for="batch-actions-select" data-i18n="console.batchAria">Batch actions</label>
+              <select id="batch-actions-select" class="select select-compact" title="Batch-configure managed targets or modes" data-i18n-attr="title:console.batchTitle">
+                <option value="" data-i18n="console.batchPlaceholder">Batch actions…</option>
+                <option value="enable-ready" data-i18n="console.batchEnableReady">Enable all ready tools</option>
+                <option value="disable-all" data-i18n="console.batchDisableAll">Disable all targets</option>
+                <option value="mode-preferred" data-i18n="console.batchModePreferred">Restore recommended modes</option>
+                <option value="mode-replace" data-i18n="console.batchModeReplace">Set all to "Replace Identity"</option>
+                <option value="mode-strict" data-i18n="console.batchModeStrict">Set all to "Persona Only"</option>
               </select>
             </div>
           </div>
 
           <div class="target-console">
-            <div id="harness-list" class="tool-grid" role="region" aria-label="接管目标列表"></div>
-            <aside id="tool-drawer" class="drawer" aria-label="工具接管详情" hidden>
+            <div id="harness-list" class="tool-grid" role="region" aria-label="Managed targets list" data-i18n-attr="aria-label:console.targetListAria"></div>
+            <aside id="tool-drawer" class="drawer" aria-label="Target configuration details" data-i18n-attr="aria-label:console.drawerAria" hidden>
               <div class="drawer-slash" aria-hidden="true"></div>
               <div id="tool-detail" class="target-detail"></div>
             </aside>
@@ -151,15 +153,15 @@
 
         <details class="prefs" id="launch-settings">
           <summary>
-            <span>命令行启动首选项</span>
-            <span id="default-summary" class="prefs-value">未设置</span>
+            <span data-i18n="console.launchPrefs">CLI Launch Preference</span>
+            <span id="default-summary" class="prefs-value" data-i18n="console.unset">Not set</span>
           </summary>
           <div class="prefs-body">
-            <p class="hint">在终端直接执行 <code>agent-purge</code> 时代为唤起的客户端；不影响上面各工具的接管范围。</p>
+            <p class="hint" data-i18n="console.launchHint">Client launched when running agent-purge directly in a terminal; does not affect the targets above.</p>
             <form id="default-form" class="inline-form">
-              <label for="default-harness" class="sr-only">首选客户端</label>
+              <label for="default-harness" class="sr-only" data-i18n="console.preferredClient">Preferred client</label>
               <select id="default-harness" class="select"></select>
-              <button class="btn btn-primary" type="submit">保存</button>
+              <button class="btn btn-primary" type="submit" data-i18n="console.save">Save</button>
             </form>
           </div>
         </details>
@@ -168,61 +170,61 @@
       <section id="page-library" class="page" aria-labelledby="library-title" hidden>
         <div class="page-heading">
           <div>
-            <h1 id="library-title">人设库</h1>
-            <p>正文会写进提示词；名称与说明只用于管理。</p>
+            <h1 id="library-title" data-i18n="library.title">Personas</h1>
+            <p data-i18n="library.subtitle">The body is written into prompts; name and description are for management only.</p>
           </div>
           <div class="heading-actions">
-            <button id="pull-personas" class="btn btn-ghost" type="button">从外部拉取</button>
-            <button id="new-persona" class="btn btn-primary" type="button">新建人设</button>
+            <button id="pull-personas" class="btn btn-ghost" type="button" data-i18n="library.pullExternal">Pull External</button>
+            <button id="new-persona" class="btn btn-primary" type="button" data-i18n="library.newPersona">New Persona</button>
           </div>
         </div>
 
         <div class="library">
-          <aside class="lib-list" aria-label="人设列表">
-            <label class="sr-only" for="persona-search">搜索人设</label>
-            <input id="persona-search" type="search" class="input" placeholder="搜索名称或说明">
+          <aside class="lib-list" aria-label="Persona list" data-i18n-attr="aria-label:library.listAria">
+            <label class="sr-only" for="persona-search" data-i18n="library.searchAria">Search personas</label>
+            <input id="persona-search" type="search" class="input" placeholder="Search name or description" data-i18n-attr="placeholder:library.searchPlaceholder">
             <div id="persona-list" class="persona-list"></div>
           </aside>
 
-          <section class="editor" aria-label="人设编辑器">
-            <div id="editor-empty" class="empty">从左侧选一份人设，查看或编辑正文。</div>
+          <section class="editor" aria-label="Persona editor" data-i18n-attr="aria-label:library.editorAria">
+            <div id="editor-empty" class="empty" data-i18n="library.editorEmpty">Select a persona on the left to view or edit its content.</div>
             <form id="editor-form" hidden>
               <div class="editor-head">
-                <h2 id="editor-title">编辑人设</h2>
-                <span id="editor-status" class="editor-status">未修改</span>
+                <h2 id="editor-title" data-i18n="library.editTitle">Edit Persona</h2>
+                <span id="editor-status" class="editor-status" data-i18n="library.unmodified">Unmodified</span>
               </div>
               <div class="field-grid">
                 <div class="field">
-                  <label for="edit-id">标识</label>
+                  <label for="edit-id" data-i18n="library.fieldId">ID</label>
                   <input id="edit-id" class="input" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,63}" maxlength="64" autocomplete="off" spellcheck="false">
-                  <span class="hint">字母、数字、短横线、下划线；创建后不可改。</span>
+                  <span class="hint" data-i18n="library.idHint">Letters, numbers, hyphens, underscores; cannot be changed after creation.</span>
                 </div>
                 <div class="field">
-                  <label for="edit-name">显示名称</label>
+                  <label for="edit-name" data-i18n="library.fieldName">Display Name</label>
                   <input id="edit-name" class="input" autocomplete="off">
                 </div>
               </div>
               <div class="field">
-                <label for="edit-desc">说明</label>
+                <label for="edit-desc" data-i18n="library.fieldDesc">Description</label>
                 <input id="edit-desc" class="input" autocomplete="off">
               </div>
               <div class="field field-grow">
-                <label for="edit-body">人设正文 <span id="char-count" class="hint"></span></label>
+                <label for="edit-body"><span data-i18n="library.fieldBody">Persona Content</span> <span id="char-count" class="hint"></span></label>
                 <textarea id="edit-body" class="input textarea" required spellcheck="false" rows="18"></textarea>
               </div>
               <details class="fine">
-                <summary>高级元数据</summary>
+                <summary data-i18n="library.advancedMeta">Advanced Metadata</summary>
                 <div class="field">
-                  <label for="edit-model">建议模型（逗号分隔，留空不限制）</label>
+                  <label for="edit-model" data-i18n="library.fieldModel">Suggested Models (comma-separated, leave blank for any)</label>
                   <input id="edit-model" class="input" autocomplete="off">
                 </div>
               </details>
               <p id="editor-hint" class="hint"></p>
               <div class="editor-actions">
-                <button id="delete-persona" class="btn btn-danger-quiet" type="button">删除</button>
+                <button id="delete-persona" class="btn btn-danger-quiet" type="button" data-i18n="library.delete">Delete</button>
                 <div class="heading-actions">
-                  <button id="save-persona" class="btn btn-ghost" type="submit">保存</button>
-                  <button id="save-apply" class="btn btn-primary" type="button">保存并应用</button>
+                  <button id="save-persona" class="btn btn-ghost" type="submit" data-i18n="console.save">Save</button>
+                  <button id="save-apply" class="btn btn-primary" type="button" data-i18n="library.saveAndApply">Save &amp; Apply</button>
                 </div>
               </div>
             </form>
@@ -233,21 +235,21 @@
       <section id="page-project" class="page" aria-labelledby="project-title" hidden>
         <div class="page-heading">
           <div>
-            <h1 id="project-title">规则文件</h1>
-            <p>把人设托管块追加到项目目录或工具全局规则文件；默认保留原文件并在末尾追加（append），随时可移除。</p>
+            <h1 id="project-title" data-i18n="project.title">Rule Files</h1>
+            <p data-i18n="project.subtitle">Append a managed persona block to project or global tool rule files; preserves original content and can be removed anytime.</p>
           </div>
         </div>
 
         <div class="project-control-bar">
           <div class="project-scope-switch">
-            <span class="field-label" id="rule-scope-label">作用范围</span>
+            <span class="field-label" id="rule-scope-label" data-i18n="project.scopeLabel">Scope</span>
             <div class="segmented" role="radiogroup" aria-labelledby="rule-scope-label">
-              <label><input type="radio" name="rule-scope" value="project" checked><span>当前项目</span></label>
-              <label><input type="radio" name="rule-scope" value="global"><span>全局目录</span></label>
+              <label><input type="radio" name="rule-scope" value="project" checked><span data-i18n="project.scopeProject">Current Project</span></label>
+              <label><input type="radio" name="rule-scope" value="global"><span data-i18n="project.scopeGlobal">Global Directory</span></label>
             </div>
           </div>
           <div class="project-persona-field">
-            <label for="project-persona-select" class="field-label">写入人设</label>
+            <label for="project-persona-select" class="field-label" data-i18n="project.personaLabel">Persona to Write</label>
             <select id="project-persona-select" class="select select-compact"></select>
           </div>
         </div>
@@ -255,75 +257,166 @@
         <div id="project-dir-wrap">
           <div class="project-toolbar">
             <div class="field project-dir-field">
-              <label for="project-dir">项目目录</label>
-              <input id="project-dir" class="input" spellcheck="false" autocomplete="off" placeholder="例如 D:\work\my-project">
+              <label for="project-dir" data-i18n="project.dirLabel">Project Directory</label>
+              <input id="project-dir" class="input" spellcheck="false" autocomplete="off" placeholder="e.g. /home/user/my-project" data-i18n-attr="placeholder:project.dirPlaceholder">
             </div>
-            <button id="project-load" class="btn btn-primary" type="button">读取</button>
-            <button id="project-cwd" class="btn btn-ghost" type="button">当前目录</button>
+            <button id="project-load" class="btn btn-primary" type="button" data-i18n="project.load">Load</button>
+            <button id="project-cwd" class="btn btn-ghost" type="button" data-i18n="project.cwd">Current Dir</button>
           </div>
-          <div id="project-recent" class="project-recent" role="group" aria-label="最近项目"></div>
+          <div id="project-recent" class="project-recent" role="group" aria-label="Recent projects" data-i18n-attr="aria-label:project.recentAria"></div>
         </div>
 
-        <div class="project-scope-bar" role="note" aria-label="规则文件生效说明">
+        <div class="project-scope-bar" role="note" aria-label="Rule file behavior" data-i18n-attr="aria-label:project.noteAria">
           <div class="project-scope-item">
-            <span class="project-scope-label">全局人设</span>
-            <strong>系统提示词接管</strong>
-            <small>在「控制台」管理，按各家系统入口生效</small>
+            <span class="project-scope-label" data-i18n="project.globalPersona">Global Persona</span>
+            <strong data-i18n="project.sysTakeover">System Prompt Injection</strong>
+            <small data-i18n="project.sysTakeoverDesc">Managed in Console, takes effect via each tool’s system entry</small>
           </div>
           <span class="project-scope-arrow" aria-hidden="true">→</span>
           <div class="project-scope-item">
-            <span class="project-scope-label">规则文件</span>
-            <strong id="project-scope-heading">当前目录的规则文件</strong>
-            <small id="project-scope-desc">人设以托管块追加在原文件末尾（append），保留原有规则，随时可移除</small>
+            <span class="project-scope-label" data-i18n="project.ruleFiles">Rule Files</span>
+            <strong id="project-scope-heading" data-i18n="project.scopeProjectHeading">Rule files in current directory</strong>
+            <small id="project-scope-desc" data-i18n="project.scopeDesc">Appends a managed block at the end of existing rule files without altering original rules; removable anytime.</small>
           </div>
         </div>
-        <div id="project-targets" class="project-targets"><p class="empty">正在读取规则文件…</p></div>
-        <p class="hint project-footnote">规则文件只影响对应的项目目录或全局配置文件；以托管块追加在文件末尾，不影响原有规则内容。「全部撤销」不会动项目规则，本页点「移除」即可无损撤回。</p>
+        <div id="project-targets" class="project-targets"><p class="empty" data-i18n="project.loading">Loading rule files…</p></div>
+        <p class="hint project-footnote" data-i18n="project.footnote">Rule files only affect the target project or global config directory; blocks are appended at the end without modifying existing rules. "Disarm All" does not touch project rules—click "Remove" here to revert cleanly.</p>
       </section>
 
       <section id="page-diagnostics" class="page" aria-labelledby="diagnostics-title" hidden>
         <div class="page-heading">
           <div>
-            <h1 id="diagnostics-title">测试与记录</h1>
-            <p>配置写没写进去、工具认没认到，分开看。这里的试跑不碰你正在用的会话。</p>
+            <h1 id="diagnostics-title" data-i18n="diag.title">Tests &amp; Logs</h1>
+            <p data-i18n="diag.subtitle">Inspect configuration writes and actual request verification separately. Test runs never touch your active sessions.</p>
           </div>
           <div class="heading-actions">
-            <button id="sync-all" class="btn btn-ghost">重新同步现有范围</button>
+            <button id="sync-all" class="btn btn-ghost" data-i18n="diag.resyncAll">Re-sync Active Targets</button>
           </div>
         </div>
 
         <section class="panel" aria-labelledby="report-title">
           <div class="panel-head">
             <div>
-              <h2 id="report-title">上一次应用</h2>
+              <h2 id="report-title" data-i18n="diag.lastApply">Last Apply</h2>
               <p id="report-meta" class="hint"></p>
             </div>
-            <button id="retry-failed" class="btn btn-ghost" hidden>重试失败项</button>
+            <button id="retry-failed" class="btn btn-ghost" hidden data-i18n="diag.retryFailed">Retry Failed</button>
           </div>
-          <div id="apply-results" class="result-list"><p class="empty">尚无应用记录</p></div>
+          <div id="apply-results" class="result-list"><p class="empty" data-i18n="diag.noApplyYet">No apply records yet.</p></div>
         </section>
 
         <section class="panel" aria-labelledby="capture-title">
           <div class="panel-head">
             <div>
-              <h2 id="capture-title">安全试跑</h2>
-              <p class="hint">在临时目录里用测试人设跑一遍，看请求里有没有真的带上人设。</p>
+              <h2 id="capture-title" data-i18n="diag.captureTitle">Dry-Run Verification</h2>
+              <p class="hint" data-i18n="diag.captureSubtitle">Runs each tool in an isolated temporary directory with a test persona to verify whether requests carry the persona.</p>
             </div>
           </div>
-          <div id="capture-results"><p class="muted">尚未加载试跑报告。</p></div>
+          <div id="capture-results"><p class="muted" data-i18n="diag.noCaptureYet">No verification report loaded yet.</p></div>
         </section>
 
         <details class="panel prefs">
-          <summary>运行状态与路径</summary>
+          <summary data-i18n="diag.runtimeState">Runtime State &amp; Paths</summary>
           <div class="prefs-body">
-            <p class="hint">运行时没被确认的项目不会标成「当前会话已生效」。首次安装或更新插件后，需要重新加载宿主。</p>
+            <p class="hint" data-i18n="diag.runtimeHint">Targets without runtime confirmation are not marked as active in the current session. Reload the host after installing or updating plugins.</p>
             <pre id="diagnostic-state" class="code-block"></pre>
           </div>
         </details>
       </section>
+
+      <section id="page-settings" class="page" aria-labelledby="settings-title" hidden>
+        <div class="page-heading">
+          <div>
+            <h1 id="settings-title" data-i18n="settings.title">Settings</h1>
+            <p data-i18n="settings.subtitle">Interface language, desktop window behavior, and WebDAV backup. Everything is stored locally.</p>
+          </div>
+        </div>
+
+        <section class="panel" aria-labelledby="language-settings-title">
+          <div class="panel-head">
+            <div>
+              <h2 id="language-settings-title" data-i18n="settings.languageTitle">Language</h2>
+              <p class="hint" data-i18n="settings.languageDesc">Auto follows LC_ALL / LC_MESSAGES / LANG and falls back to English outside Chinese locales.</p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="language-select" data-i18n="settings.languageLabel">Interface Language</label>
+              <select id="language-select" class="select">
+                <option value="auto" data-i18n="settings.languageAuto">Auto (System Locale)</option>
+                <option value="en" data-i18n="settings.languageEn">English</option>
+                <option value="zh-CN" data-i18n="settings.languageZh">简体中文 (Chinese)</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button id="save-language" class="btn btn-primary" type="button" data-i18n="settings.saveLanguage">Save Language</button>
+            <span id="language-status" class="hint"></span>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="desktop-settings-title">
+          <div class="panel-head">
+            <div>
+              <h2 id="desktop-settings-title" data-i18n="settings.desktopTitle">Desktop Window</h2>
+              <p class="hint" data-i18n="settings.desktopSubtitle">Applies only when launched via desktop icon / executable; terminal runs of agent-purge web are managed by the terminal.</p>
+            </div>
+            <span id="desktop-mode-badge" class="pill" data-i18n="console.powerReading">Loading</span>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="close-action" data-i18n="settings.closeActionLabel">When closing window</label>
+              <select id="close-action" class="select">
+                <option value="exit" data-i18n="settings.closeExit">Exit local service</option>
+                <option value="stay" data-i18n="settings.closeStay">Keep service in background (reconnect on next launch)</option>
+              </select>
+              <p class="hint" data-i18n="settings.closeHint">Takes effect immediately for the next window close.</p>
+            </div>
+            <label class="check"><input type="checkbox" id="confirm-close"><span data-i18n="settings.confirmClose">Confirm before closing window</span></label>
+          </div>
+          <div class="settings-actions">
+            <button id="save-desktop" class="btn btn-primary" type="button" data-i18n="settings.saveDesktop">Save Window Settings</button>
+            <span id="desktop-status" class="hint"></span>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="webdav-title">
+          <div class="panel-head">
+            <div>
+              <h2 id="webdav-title" data-i18n="settings.webdavTitle">WebDAV Backup</h2>
+              <p class="hint" data-i18n="settings.webdavSubtitle">Backs up personas and settings (the WebDAV password in state.json is never included). Restore overwrites matching local files after saving a snapshot in backups/.</p>
+            </div>
+            <span id="backup-stamp" class="hint"></span>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="webdav-url" data-i18n="settings.webdavUrl">URL</label>
+              <input id="webdav-url" class="input" spellcheck="false" placeholder="https://dav.example.com/dav/">
+            </div>
+            <div class="field">
+              <label for="webdav-dir" data-i18n="settings.webdavDir">Remote Directory</label>
+              <input id="webdav-dir" class="input" spellcheck="false" placeholder="agent-purge">
+            </div>
+            <div class="field">
+              <label for="webdav-username" data-i18n="settings.webdavUsername">Username</label>
+              <input id="webdav-username" class="input" spellcheck="false" autocomplete="username">
+            </div>
+            <div class="field">
+              <label for="webdav-password" data-i18n="settings.webdavPassword">Password</label>
+              <input id="webdav-password" class="input" type="password" autocomplete="new-password" placeholder="Leave blank to keep unchanged" data-i18n-attr="placeholder:settings.webdavPasswordPlaceholder">
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button id="webdav-save" class="btn btn-ghost" type="button" data-i18n="settings.webdavSaveTest">Save &amp; Test Connection</button>
+            <button id="webdav-backup" class="btn btn-primary" type="button" data-i18n="settings.webdavBackup">Back Up Now</button>
+            <button id="webdav-restore" class="btn btn-ghost" type="button" data-i18n="settings.webdavRestore">Restore from Backup</button>
+            <span id="webdav-status" class="hint"></span>
+          </div>
+        </section>
+      </section>
     </main>
 
-    <footer class="foot">配置写入与会话生效是两件事：以执行器回调和请求证据为准。</footer>
+    <footer class="foot" data-i18n="footer.note">Configuration writes and session activation are separate: refer to executor callbacks and request evidence.</footer>
   </div>
 </div>
 
@@ -332,87 +425,87 @@
 <dialog id="import-dialog" class="modal">
   <form id="import-form" method="dialog">
     <div class="modal-head">
-      <h2>从外部拉取人设</h2>
-      <button type="button" id="close-import" class="icon-btn" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 data-i18n="import.title">Pull Personas from External Source</h2>
+      <button type="button" id="close-import" class="icon-btn" aria-label="Close" data-i18n-attr="aria-label:import.closeAria"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
-    <p class="hint">支持公开 GitHub 仓库（<code>owner/repo</code>）或本机目录；只导入 <code>.md</code> 提示词，自动跳过说明文档。</p>
+    <p class="hint" data-i18n="import.subtitle">Supports public GitHub repositories (owner/repo) or a local directory; imports .md prompt files and skips docs automatically.</p>
     <div class="modal-body">
       <div class="preset-row">
-        <span class="hint">推荐</span>
+        <span class="hint" data-i18n="import.recommended">Recommended</span>
         <button type="button" class="chip chip-button" data-preset="ZiChuanLan/some-magic">ZiChuanLan/some-magic</button>
       </div>
       <div class="field">
-        <label for="import-source">导入源</label>
-        <input id="import-source" class="input" placeholder="owner/repo 或 D:\prompts" required autocomplete="off">
+        <label for="import-source" data-i18n="import.sourceLabel">Source</label>
+        <input id="import-source" class="input" placeholder="owner/repo or /path/to/prompts" data-i18n-attr="placeholder:import.sourcePlaceholder" required autocomplete="off">
       </div>
-      <label class="check"><input type="checkbox" id="import-overwrite" checked>覆盖同名标识</label>
+      <label class="check"><input type="checkbox" id="import-overwrite" checked><span data-i18n="import.overwrite">Overwrite existing IDs</span></label>
       <div id="import-status" class="status-box" hidden></div>
     </div>
     <div class="modal-foot">
-      <button type="button" id="cancel-import" class="btn btn-ghost">取消</button>
-      <button type="submit" id="start-import" class="btn btn-primary">开始拉取</button>
+      <button type="button" id="cancel-import" class="btn btn-ghost" data-i18n="import.cancel">Cancel</button>
+      <button type="submit" id="start-import" class="btn btn-primary" data-i18n="import.start">Start Pull</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="update-dialog" class="modal">
   <div class="modal-head">
-    <h2 id="update-dialog-title">发现新版本</h2>
-    <button type="button" id="close-update" class="icon-btn" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <h2 id="update-dialog-title" data-i18n="update.title">Update Available</h2>
+    <button type="button" id="close-update" class="icon-btn" aria-label="Close" data-i18n-attr="aria-label:import.closeAria"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
   </div>
-  <p class="hint" id="update-dialog-desc">检查到最新版本，可以就地升级。</p>
+  <p class="hint" id="update-dialog-desc" data-i18n="update.desc">A newer version is available and can be upgraded in place.</p>
   <div class="modal-body">
     <div class="update-versions">
-      <span class="chip mono" id="update-current-tag">当前 v0.0.0</span>
+      <span class="chip mono" id="update-current-tag">Current v0.0.0</span>
       <span class="update-arrow" aria-hidden="true">→</span>
-      <span class="chip chip-good mono" id="update-latest-tag">最新 v0.0.0</span>
+      <span class="chip chip-good mono" id="update-latest-tag">Latest v0.0.0</span>
       <span class="hint" id="update-source-label"></span>
     </div>
     <div id="update-changelog-box" class="update-changelog">
-      <div class="update-changelog-head">更新说明</div>
+      <div class="update-changelog-head" data-i18n="update.changelog">Release Notes</div>
       <div id="update-changelog-text" class="update-changelog-text"></div>
     </div>
     <div id="update-command-box">
-      <div class="field-label">终端升级命令</div>
+      <div class="field-label" data-i18n="update.commandLabel">Terminal Upgrade Command</div>
       <div class="command-row">
         <code id="update-command-text">npm install -g agent-purge@latest</code>
-        <button type="button" id="copy-update-command" class="btn btn-ghost">复制</button>
+        <button type="button" id="copy-update-command" class="btn btn-ghost" data-i18n="update.copy">Copy</button>
       </div>
     </div>
     <div id="update-status" class="status-box" hidden></div>
   </div>
   <div class="modal-foot">
-    <button type="button" id="dismiss-update" class="btn btn-ghost">稍后</button>
-    <a id="update-github-link" href="https://github.com/ZiChuanLan/agent-purge/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">Release 页面</a>
-    <button type="button" id="btn-do-upgrade" class="btn btn-primary">一键升级</button>
+    <button type="button" id="dismiss-update" class="btn btn-ghost" data-i18n="update.later">Later</button>
+    <a id="update-github-link" href="https://github.com/ZiChuanLan/agent-purge/releases/latest" target="_blank" rel="noopener noreferrer" class="btn btn-ghost" data-i18n="update.releasePage">Release Page</a>
+    <button type="button" id="btn-do-upgrade" class="btn btn-primary" data-i18n="update.upgradeNow">Upgrade Now</button>
   </div>
 </dialog>
 
 <dialog id="confirm-dialog" class="modal">
   <form id="confirm-form" method="dialog">
     <div class="modal-head">
-      <h2 id="confirm-dialog-title">确认开启接管</h2>
-      <button type="button" id="close-confirm" class="icon-btn" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      <h2 id="confirm-dialog-title" data-i18n="confirm.title">Confirm Enabling Target</h2>
+      <button type="button" id="close-confirm" class="icon-btn" aria-label="Close" data-i18n-attr="aria-label:import.closeAria"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     </div>
-    <p class="hint">开启后会改写目标工具的系统提示词，可能清除原厂身份与限制。</p>
+    <p class="hint" data-i18n="confirm.desc">Enabling will rewrite the target tool’s system prompt and may strip built-in identity and restrictions.</p>
     <div class="modal-body">
       <div class="confirm-target">
-        <span class="hint">目标工具</span>
+        <span class="hint" data-i18n="confirm.targetTool">Target Tool</span>
         <strong id="confirm-harness-title">—</strong>
-        <span id="confirm-harness-badge" class="chip">配置托管</span>
+        <span id="confirm-harness-badge" class="chip" data-i18n="confirm.badgeConfig">Config</span>
       </div>
       <div class="backup-note">
-        <strong>写入前先做完整备份</strong>
-        <p>每个被改动的文件都会按原字节建立 SHA256 快照；关闭接管时逐位还原。人设与你自己的修改不受影响。</p>
+        <strong data-i18n="confirm.backupTitle">Full backup before writing</strong>
+        <p data-i18n="confirm.backupDesc">A SHA256 snapshot of every modified file is saved before writing and restored byte-for-byte when disabled. Your personas and custom edits remain safe.</p>
       </div>
       <div class="legal-note">
-        <strong>使用须知</strong>
-        <p>仅供本地合法的人设定制与模型指令研究。开启后会剥离或改写宿主内置的系统提示词；请遵守各软件的使用条款，并对生成内容与操作后果自行负责。</p>
+        <strong data-i18n="confirm.legalTitle">Notice</strong>
+        <p data-i18n="confirm.legalDesc">For local lawful persona customization and model instruction research only. Enabling strips or rewrites host built-in system prompts; please comply with each software’s terms of use and take responsibility for generated output.</p>
       </div>
     </div>
     <div class="modal-foot">
-      <button type="button" id="cancel-confirm" class="btn btn-ghost">取消</button>
-      <button type="submit" id="btn-do-confirm" class="btn btn-primary">确认开启</button>
+      <button type="button" id="cancel-confirm" class="btn btn-ghost" data-i18n="confirm.cancel">Cancel</button>
+      <button type="submit" id="btn-do-confirm" class="btn btn-primary" data-i18n="confirm.submit">Confirm &amp; Enable</button>
     </div>
   </form>
 </dialog>

@@ -33,12 +33,12 @@ Source: "..\dist\agent-purge\*"; DestDir: "{app}"; Flags: ignoreversion recurses
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "其他选项："; Flags: unchecked
 
 [Icons]
-Name: "{group}\{#AppName} 客户端"; Filename: "{app}\agent-purge.exe"; Parameters: "web --auto-exit"; WorkingDir: "{app}"
-Name: "{userdesktop}\{#AppName}"; Filename: "{app}\agent-purge.exe"; Parameters: "web --auto-exit"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{#AppName} 客户端"; Filename: "{app}\agent-purge.exe"; Parameters: "web --desktop"; WorkingDir: "{app}"
+Name: "{userdesktop}\{#AppName}"; Filename: "{app}\agent-purge.exe"; Parameters: "web --desktop"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
-Filename: "{app}\agent-purge.exe"; Parameters: "web --auto-exit"; Description: "启动 {#AppName} 桌面客户端"; Flags: postinstall nowait skipifsilent
+Filename: "{app}\agent-purge.exe"; Parameters: "web --desktop"; Description: "启动 {#AppName} 桌面客户端"; Flags: postinstall nowait skipifsilent
 
 [Code]
 const NodeUrl = 'https://nodejs.org/';

@@ -20,7 +20,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR ignored, int sh
     if (*args == L'"') { args++; while (*args && *args != L'"') args++; if (*args) args++; }
     else while (*args && *args > L' ') args++;
     while (*args && *args <= L' ') args++;
-    int written = _snwprintf(command, 32768, L"\"%s\" \"%s\\bin\\agent-purge.mjs\" %s", node, directory, *args ? args : L"web --auto-exit");
+    int written = _snwprintf(command, 32768, L"\"%s\" \"%s\\bin\\agent-purge.mjs\" %s", node, directory, *args ? args : L"web --desktop");
     if (written < 0 || written >= 32768) return 1;
     STARTUPINFOW startup;
     PROCESS_INFORMATION process;

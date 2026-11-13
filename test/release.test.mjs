@@ -14,7 +14,7 @@ test('thin manifest detects changed source, changed payload, extra files and wro
   const root=mkdtempSync(join(tmpdir(),'ap-manifest-')), src=join(root,'source'), out=join(root,'payload');
   try {
     for(const dir of ['bin','lib','backends','bench','web/assets']) mkdirSync(join(src,dir),{recursive:true});
-    const files=['bin/agent-purge.mjs','lib/core.mjs','backends/index.mjs','bench/capture.mjs','web/assets/pi.png','web/server.mjs','web/ui.html','web/app.js','web/model.mjs','web/styles.css','matrix.json','package.json','README.md','CONTRIBUTING.md','LICENSE'];
+    const files=['bin/agent-purge.mjs','lib/core.mjs','backends/index.mjs','bench/capture.mjs','web/assets/pi.png','web/server.mjs','web/ui.html','web/app.js','web/model.mjs','web/i18n.mjs','web/styles.css','matrix.json','package.json','README.md','CONTRIBUTING.md','LICENSE'];
     for(const file of files) writeFileSync(join(src,file),file==='package.json'?' {"version":"1.2.3"}':file);
     mkdirSync(join(src,'web/shots'));writeFileSync(join(src,'web/shots/private.png'),'PRIVATE');
     mkdirSync(join(src,'personas'));writeFileSync(join(src,'personas/private.md'),'PRIVATE');

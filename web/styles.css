@@ -221,6 +221,8 @@ main {
   letter-spacing: 0.01em;
 }
 .hint { font-size: 12.5px; line-height: 1.5; color: var(--faint); }
+.hint.is-good { color: var(--good); }
+.hint.is-bad { color: var(--bad); }
 .muted { font-size: 13px; color: var(--muted); }
 .empty { font-size: 13px; color: var(--faint); padding: 18px 0; }
 
@@ -1088,6 +1090,14 @@ main {
   margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line-soft);
   display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap;
 }
+/* 设置页的按钮行：比 panel-foot 宽松，按钮和状态文字排在同一行 */
+.settings-actions {
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-soft);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.settings-actions .hint { flex: 1 1 220px; min-width: 0; }
+#page-settings .panel { margin-bottom: 16px; }
+#page-settings .check { align-self: end; padding-bottom: 6px; }
 .preset-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .status-box {
   padding: 10px 12px; border-radius: var(--radius);

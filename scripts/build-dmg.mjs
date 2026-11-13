@@ -23,7 +23,7 @@ if (!bun) throw new Error('构建 macOS 产物需要 Bun，请先安装 Bun');
 
 const assets = [
   'matrix.json', 'package.json', 'lib/evidence.mjs',
-  'web/ui.html', 'web/app.js', 'web/model.mjs', 'web/styles.css',
+  'web/ui.html', 'web/app.js', 'web/model.mjs', 'web/i18n.mjs', 'web/styles.css',
   ...listFiles(join(ROOT, 'web/assets')).map(file => `web/assets/${file}`),
   ...listFiles(join(ROOT, 'lib/templates/personas')).map(file => `lib/templates/personas/${file}`),
 ];

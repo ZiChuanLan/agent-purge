@@ -7,6 +7,8 @@
 //   用东西（跑起来）           <harness> / 裸敲已 arm 的命令名 / web / ls / status
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { resolveLocale, pickText } from "../lib/i18n.mjs";
 import { backends, oneshots } from "../backends/index.mjs";
 import { resolveBin, launchConfig, prepareCommand, spawnPrepared } from "../lib/spawn.mjs";
 import { launchEnvironment } from "../lib/environment.mjs";
@@ -19,10 +21,21 @@ import { applyConfiguration, changeChannel, configureHarness, disableHarness } f
 import { ROOT, isCompiled, readResource } from "../lib/root.mjs";
 // 静态导入：bun 单文件产物里，被动态 import 过的模块会被拆成独立 chunk，命名空间就空了
 import { serveWeb } from "../web/server.mjs";
+import { processAlive, readInstance, registerInstance, releaseInstance, updateWindow, windowAliveIn } from "../lib/web-instance.mjs";
+import { settingsOf } from "../lib/settings.mjs";
 
 // 数据（state.json + personas/）放用户目录，npm 升级不会连人设一起清掉
 // 编译态没有「包目录」可搬旧数据，传 null 跳过 legacy 迁移
 const DATA = dataHome();
+function cliLocale() {
+	let setting;
+	try {
+		const file = join(DATA, "state.json");
+		if (existsSync(file)) setting = JSON.parse(readFileSync(file, "utf8"))?.settings?.language;
+	} catch {}
+	return resolveLocale({ setting });
+}
+const L = (zh, en) => pickText(cliLocale(), zh, en);
 const matrix = (() => {
 	try { return JSON.parse(readResource("matrix.json").toString("utf8")); }
 	catch (error) { throw new Error(`无法加载 matrix.json：${error.message}`, { cause: error }); }
@@ -35,7 +48,10 @@ const separator = argv.indexOf("--");
 const controlArgs = separator < 0 ? argv : argv.slice(0, separator);
 if (controlArgs.includes("--help") || controlArgs.includes("-h")) { help(); process.exit(0); }
 if (argv[0] === "self-uninstall" && !argv.includes("--yes") && !argv.includes("--dry-run")) {
-	console.error("self-uninstall 会永久删除用户人设、设置和恢复资料。请先备份；仅撤销接管并保留数据请用 agent-purge clean。\n先预览：agent-purge self-uninstall --dry-run\n确认删除：agent-purge self-uninstall --yes");
+	console.error(L(
+		"self-uninstall 会永久删除用户人设、设置和恢复资料。请先备份；仅撤销接管并保留数据请用 agent-purge clean。\n先预览：agent-purge self-uninstall --dry-run\n确认删除：agent-purge self-uninstall --yes",
+		"self-uninstall permanently deletes your personas, settings, and restore data. Back up first; to only revert injections while keeping data, run agent-purge clean.\nPreview: agent-purge self-uninstall --dry-run\nConfirm: agent-purge self-uninstall --yes",
+	));
 	process.exit(2);
 }
 // Finder 双击 .app 启动时 PATH 仅含系统目录，补全常见用户工具路径以便探测本机 CLI。
@@ -74,7 +90,24 @@ if (argv[0] === "--serve") {
 			port = fallback;
 		}
 	}
-	serveWeb(port, { autoExit: argv.includes("--auto-exit") });
+	// 单例：--serve 也登记实例（web --detach 的子进程走这条路），退出时自己清理。
+	// 端口 0 是隔离 smoke / 测试的随机端口，不参与单例。
+	const claim = registerInstance(DATA, port);
+	if (!claim.ok) {
+		if (claim.error) {
+			console.error(`控制台实例登记失败：${claim.error.message}`);
+			process.exit(1);
+		}
+		console.log(`agent-purge 控制台已在运行（端口 ${claim.existing?.port ?? "?"}），无需重复启动。`);
+		process.exit(0);
+	}
+	serveWeb(port, {
+		autoExit: argv.includes("--auto-exit"),
+		desktop: argv.includes("--desktop"),
+		// 子进程也现读设置：改完「关窗常驻」不用重启已经起着的服务
+		exitPolicy: () => (argv.includes("--desktop") ? exitOnCloseSetting() : true),
+		windowAlive: () => windowAliveIn(DATA, port),
+	});
 	await new Promise(() => {});
 }
 const flag = (name, fallback) => {
@@ -88,7 +121,7 @@ let cmd = argv[0];
 
 // 便携版 exe 双击无参数启动时，默认直接打开原生桌面窗口应用
 if (!cmd && isCompiled()) {
-	await webCmd({ autoExit: !argv.includes("--no-auto-exit") });
+	await webCmd();
 	// 挂住事件循环
 	await new Promise(() => {});
 }
@@ -495,7 +528,7 @@ async function launch(name) {
 // ── 选东西的实现 ───────────────────────────────────────────────────────────
 
 function printApply(r) {
-	console.log(`persona ${r.persona ?? "(未设置)"} · mode ${r.mode} · revision ${r.revision}`);
+	console.log(`persona ${r.persona ?? L("(未设置)", "(unset)")} · mode ${r.mode} · revision ${r.revision}`);
 	for (const row of r.results) {
 		// 被例外覆盖的那家写进去的不是全局值，直接标出来，否则看不出来它是怎么生效的
 		const odd = row.mode && row.mode !== r.mode ? ` [${row.persona ?? "-"} · ${row.mode}]` : "";
@@ -507,8 +540,8 @@ function printApply(r) {
 /** 只列跟全局不一样的几家；没例外就什么都不打印 */
 function printOverrides(state) {
 	for (const [h, o] of Object.entries(state.overrides ?? {})) {
-		const bits = [o.persona ? `人设=${o.persona}` : "", o.mode ? `模式=${o.mode}` : ""].filter(Boolean);
-		console.log(`  ${h}: ${bits.join(" ")}（其余跟随全局；--for ${h} follow 恢复）`);
+		const bits = [o.persona ? `${L("人设", "persona")}=${o.persona}` : "", o.mode ? `${L("模式", "mode")}=${o.mode}` : ""].filter(Boolean);
+		console.log(L(`  ${h}: ${bits.join(" ")}（其余跟随全局；--for ${h} follow 恢复）`, `  ${h}: ${bits.join(" ")} (others follow global; --for ${h} follow to reset)`));
 	}
 }
 
@@ -516,19 +549,19 @@ async function useCmd() {
 	const id = argv[1];
 	const forHarness = flag("--for", null);
 	if (forHarness) {
-		if (!id) die("用法：agent-purge use <persona|follow> --for <harness>");
+		if (!id) die(L("用法：agent-purge use <persona|follow> --for <harness>", "Usage: agent-purge use <persona|follow> --for <harness>"));
 		const follow = id === "follow";
 		const { createStore } = await import("../lib/personas.mjs");
 		const store = createStore(DATA);
-		if (!follow && !store.read(id)) die(`没有人设: ${id}（可用: ${store.list().map((p) => p.id).join(", ")}）`);
+		if (!follow && !store.read(id)) die(L(`没有人设: ${id}（可用: ${store.list().map((p) => p.id).join(", ")}）`, `Unknown persona: ${id} (available: ${store.list().map((p) => p.id).join(", ")})`));
 		const report = configureHarness(DATA, forHarness, { persona: follow ? null : id });
 		const eff = resolveFor(loadState(DATA).state, forHarness);
-		console.log(`${forHarness} 人设 → ${eff.persona ?? "(未设置)"}（${eff.personaFrom === "override" ? "单独指定" : "跟随全局"}）`);
+		console.log(L(`${forHarness} 人设 → ${eff.persona ?? "(未设置)"}（${eff.personaFrom === "override" ? "单独指定" : "跟随全局"}）`, `${forHarness} persona → ${eff.persona ?? "(unset)"} (${eff.personaFrom === "override" ? "override" : "follows global"})`));
 		printApply(report);
 		return;
 	}
 	if (!id) {
-		console.log(`当前 persona: ${loadState(DATA).state.persona ?? "(未设置)"}`);
+		console.log(L(`当前 persona: ${loadState(DATA).state.persona ?? "(未设置)"}`, `Current persona: ${loadState(DATA).state.persona ?? "(unset)"}`));
 		printOverrides(loadState(DATA).state);
 		return;
 	}
@@ -543,17 +576,20 @@ function modeCmd() {
 	const mode = argv[1];
 	const forHarness = flag("--for", null);
 	if (forHarness) {
-		if (!mode) die("用法：agent-purge mode <strict|replace|append|off|follow> --for <harness>");
+		if (!mode) die(L("用法：agent-purge mode <strict|replace|append|off|follow> --for <harness>", "Usage: agent-purge mode <strict|replace|append|off|follow> --for <harness>"));
 		const follow = mode === "follow";
-		if (!follow && !MODES.includes(mode)) die(`未知模式: ${mode}（可用: ${MODES.join("/")}/follow）`);
+		if (!follow && !MODES.includes(mode)) die(L(`未知模式: ${mode}（可用: ${MODES.join("/")}/follow）`, `Unknown mode: ${mode} (valid: ${MODES.join("/")}/follow)`));
 		const report = configureHarness(DATA, forHarness, { mode: follow ? null : mode });
 		const eff = resolveFor(loadState(DATA).state, forHarness);
-		console.log(`${forHarness} 模式 → ${eff.mode}（${eff.modeFrom === "override" ? "单独指定" : "跟随全局"}）`);
+		console.log(L(`${forHarness} 模式 → ${eff.mode}（${eff.modeFrom === "override" ? "单独指定" : "跟随全局"}）`, `${forHarness} mode → ${eff.mode} (${eff.modeFrom === "override" ? "override" : "follows global"})`));
 		printApply(report);
 		return;
 	}
 	if (!mode) {
-		console.log(`当前模式: ${loadState(DATA).state.default?.mode ?? "replace"}\nstrict=只发人设；replace=移除宿主身份句；append=宿主后追加；off=暂停并撤下静态内容`);
+		console.log(L(
+			`当前模式: ${loadState(DATA).state.default?.mode ?? "replace"}\nstrict=只发人设；replace=移除宿主身份句；append=宿主后追加；off=暂停并撤下静态内容`,
+			`Current mode: ${loadState(DATA).state.default?.mode ?? "replace"}\nstrict=persona only; replace=strip host identity; append=append after host; off=paused`,
+		));
 		printOverrides(loadState(DATA).state);
 		return;
 	}
@@ -674,30 +710,33 @@ async function statusCmd() {
 		const shims = shimMod.shimStatus();
 		const slashes = slashMod.slashStatus(DATA);
 
-		console.log(`persona  ${state.persona ?? "(未设置)"}`);
-		console.log(`default  ${state.default ? `${state.default.harness ?? "(未选默认)"} · ${state.default.mode}` : "(未设置)"}   裸敲 agent-purge 用它`);
+		console.log(`persona  ${state.persona ?? L("(未设置)", "(unset)")}`);
+		console.log(`default  ${state.default ? `${state.default.harness ?? L("(未选默认)", "(none)")} · ${state.default.mode}` : L("(未设置)", "(unset)")}   ${L("裸敲 agent-purge 用它", "used when running agent-purge with no args")}`);
 		console.log(`state    ${join(DATA, "state.json")}`);
 		console.log("");
-		console.log("harness     shim   slash  install   /purge层  常驻落点");
+		console.log(L("harness     shim   slash  install   /purge层  常驻落点", "harness     shim   slash  install   /purge    persistent target"));
 		for (const [h] of Object.entries(matrix.harnesses)) {
 			const armed = armedOf(state, h);
 			const sh = shims.find((s) => s.id === h);
 			const sl = slashes.find((s) => s.id === h);
 			const cap = capsFor(h, { bin: sh?.target ?? null });
 			const mark = (on) => (on ? " ✓  " : " ·  ");
-			const slashCol = sl && sl.offered ? (sl.layer === "sys" ? "sys(热)" : "user") : "—";
-			// install 列不写“注册没注册”，写“能不能装”：装了是 ✓，能装没装是「可用」，没落点才是 —
-			const installCol = armed.includes("install") ? " ✓ " : cap.install.ok ? "可用" : " — ";
-			const landing = cap.install.ok ? `${cap.install.layer || "?"}${cap.install.verified === false ? "(未实测)" : ""}` : (cap.install.why || "");
+			const slashCol = sl && sl.offered ? (sl.layer === "sys" ? L("sys(热)", "sys(hot)") : "user") : "—";
+			const installCol = armed.includes("install") ? " ✓ " : cap.install.ok ? L("可用", "avail") : " — ";
+			const landing = cap.install.ok ? `${cap.install.layer || "?"}${cap.install.verified === false ? L("(未实测)", "(unverified)") : ""}` : (cap.install.why || "");
 			console.log(
 				`${h.padEnd(11)}${mark(sh?.installed).padEnd(7)}${mark(sl?.installed).padEnd(7)}${installCol.padEnd(10)}${slashCol.padEnd(10)}${landing}`,
 			);
 		}
 		const dir = shimMod.shimDir();
 		const ps = shimMod.pathState();
-		const where = !ps.present ? "不在 PATH" : ps.first ? "已在 PATH 最前" : "在 PATH 但不最前（真身可能先被命中）";
-		console.log(`\nshim 目录 ${dir}（${where}）`);
-		if (!ps.first) console.log(`修好它：agent-purge arm <h> --shim（会自动修正 PATH）`);
+		const where = !ps.present
+			? L("不在 PATH", "not in PATH")
+			: ps.first
+				? L("已在 PATH 最前", "first in PATH")
+				: L("在 PATH 但不最前（真身可能先被命中）", "in PATH, not first (real binary may shadow)");
+		console.log(L(`\nshim 目录 ${dir}（${where}）`, `\nshim dir ${dir} (${where})`));
+		if (!ps.first) console.log(L(`修好它：agent-purge arm <h> --shim（会自动修正 PATH）`, `Fix it: agent-purge arm <h> --shim (updates PATH automatically)`));
 	});
 }
 
@@ -712,34 +751,37 @@ async function personaImportCmd(args = []) {
 		source = "ZiChuanLan/some-magic";
 	}
 	if (!source) {
-		die("用法：agent-purge pull [owner/repo 或 本地目录] 或 agent-purge persona import <dir>");
+		die(L("用法：agent-purge pull [owner/repo 或 本地目录] 或 agent-purge persona import <dir>", "Usage: agent-purge pull [owner/repo | local-dir] or agent-purge persona import <dir>"));
 	}
 
 	const noOverwrite = argv.includes("--no-overwrite");
 	const { importPersonas } = await import("../lib/persona-import.mjs");
-	console.log(`正在从 ${source} 拉取人设...`);
+	console.log(L(`正在从 ${source} 拉取人设...`, `Pulling personas from ${source}...`));
 	try {
 		const res = await importPersonas(source, DATA, { overwrite: !noOverwrite });
-		console.log(`\n拉取完成！共导入 ${res.total} 个人设：`);
+		console.log(L(`\n拉取完成！共导入 ${res.total} 个人设：`, `\nPull complete! Imported ${res.total} persona(s):`));
 		for (const item of res.imported) {
-			console.log(`  ✓ ${item.id.padEnd(14)} ${item.name} (${item.chars} 字, ${item.action === "created" ? "新增" : "更新"})`);
+			console.log(L(
+				`  ✓ ${item.id.padEnd(14)} ${item.name} (${item.chars} 字, ${item.action === "created" ? "新增" : "更新"})`,
+				`  ✓ ${item.id.padEnd(14)} ${item.name} (${item.chars} chars, ${item.action === "created" ? "created" : "updated"})`,
+			));
 		}
 		if (res.skipped?.length) {
-			console.log(`\n跳过 ${res.skipped.length} 个文件：`);
+			console.log(L(`\n跳过 ${res.skipped.length} 个文件：`, `\nSkipped ${res.skipped.length} file(s):`));
 			for (const item of res.skipped) {
 				console.log(`  - ${item.file || item.id}: ${item.reason}`);
 			}
 		}
 		if (res.errors?.length) {
-			console.log(`\n错误 ${res.errors.length} 项：`);
+			console.log(L(`\n错误 ${res.errors.length} 项：`, `\n${res.errors.length} error(s):`));
 			for (const item of res.errors) {
 				console.log(`  ✗ ${item.file}: ${item.error}`);
 			}
 		}
-		console.log(`\n查看已安装人设：agent-purge ls`);
-		console.log(`切换当前人设：agent-purge use <id>`);
+		console.log(L(`\n查看已安装人设：agent-purge ls`, `\nList personas: agent-purge ls`));
+		console.log(L(`切换当前人设：agent-purge use <id>`, `Switch active persona: agent-purge use <id>`));
 	} catch (e) {
-		die(`拉取失败：${e.message}`);
+		die(L(`拉取失败：${e.message}`, `Pull failed: ${e.message}`));
 	}
 }
 
@@ -750,11 +792,11 @@ async function lsCmd() {
 	const fit = store.resolve({ harness: state.default?.harness, model: null });
 	for (const p of store.list()) {
 		const mark = p.id === store.activeId() ? "*" : " ";
-		const best = fit?.persona?.id === p.id && fit?.matched ? " ← 最匹配当前 harness" : "";
+		const best = fit?.persona?.id === p.id && fit?.matched ? L(" ← 最匹配当前 harness", " ← best match for current harness") : "";
 		const desc = p.meta?.description ?? p.meta?.desc ?? "";
 		console.log(`${mark} ${p.id.padEnd(14)} ${String(p.meta?.name ?? "").padEnd(12)} ${desc.slice(0, 44)}${best}`);
 	}
-	console.log(`\n* = active（agent-purge use <id> 切换）`);
+	console.log(L(`\n* = active（agent-purge use <id> 切换）`, `\n* = active (switch with: agent-purge use <id>)`));
 }
 
 /** 探测端口能否绑定；Windows 的 Hyper-V 保留段会返回 EACCES，而不是 EADDRINUSE。 */
@@ -774,48 +816,158 @@ async function findFreePort(start, end) {
 	}
 	return null;
 }
+/** 设置页里的「关闭窗口时」：读取失败就当退出（老行为），不让人对着关不掉的窗口发呆。 */
+function exitOnCloseSetting() {
+	try {
+		const { state } = loadState(DATA);
+		return settingsOf(state).desktop.exitOnClose;
+	} catch {
+		return true;
+	}
+}
+
+/**
+ * 探测某端口上是不是活着的 agent-purge。
+ * /api/instance 是只报身份的秒回探针；老版本没有它，退回 /api/state 的形状判断
+ * （/api/state 会做 detect，服务忙的时候可能几秒才回，所以只当兜底）。
+ */
+async function probeServer(port) {
+	const probes = [
+		["/api/instance", data => data?.app === "agent-purge"],
+		["/api/state", data => Boolean(data && typeof data === "object" && ("version" in data || "personas" in data))],
+	];
+	for (const [path, accept] of probes) {
+		try {
+			const res = await fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(2000) });
+			if (!res.ok) continue;
+			const data = await res.json().catch(() => null);
+			if (accept(data)) return true;
+		} catch {}
+	}
+	return false;
+}
+
+/**
+ * 本数据目录里登记着、并且进程还活着的控制台实例。
+ * 登记就是锁：进程活着就等于服务活着，不再多探一次端口 ——
+ * /api/state 要跑 detect，首次请求可能几秒才回，拿它当存活判定会把正常的重复启动误判成「没实例」。
+ */
+function liveInstance(home = DATA) {
+	const record = readInstance(home);
+	if (!record) return null;
+	if (!processAlive(record.pid)) { releaseInstance(home, record.pid); return null; }
+	return record;
+}
+
+/**
+ * 复用已经在跑的控制台：单例的意思是「只把老窗口叫到前台」，绝不再开第二个页面。
+ * 只有窗口真的不在了（用户关了窗口、浏览器崩了）才补开一扇，并把新 pid 记回登记。
+ */
+async function reuseInstance(record, { noOpen }) {
+	const url = `http://127.0.0.1:${record.port}`;
+	if (noOpen) { console.log(`agent-purge 服务已在 ${url} 运行`); return; }
+	const { openAppWindow, focusConsoleWindow, windowProfileDir } = await import("../lib/window.mjs");
+	const profileDir = windowProfileDir(DATA);
+	const window = focusConsoleWindow({ pid: record.windowPid, profileDir });
+	if (window.focused) {
+		console.log(`✓ agent-purge 已在运行，已切换到已有窗口 → ${url}`);
+		return;
+	}
+	// 窗口还在、只是系统不让我们抢焦点：让用户自己点任务栏，也别开第二扇
+	if (window.found) {
+		console.log(`✓ agent-purge 已在运行，窗口已在任务栏 → ${url}`);
+		return;
+	}
+	const opened = openAppWindow(url, { profileDir });
+	if (opened.mode === "app" && opened.pid) updateWindow(DATA, record.pid, opened.pid);
+	console.log(opened.mode === "app"
+		? `✓ agent-purge 已在运行，已打开控制台窗口 → ${url}`
+		: `agent-purge 已在 ${url} 运行，请在浏览器中打开该地址`);
+}
+
+/** 等子进程把实例登记写出来（--detach 时服务是独立进程）。 */
+async function waitForInstance(pid, timeout = 5000) {
+	const deadline = Date.now() + timeout;
+	while (Date.now() < deadline) {
+		const record = readInstance(DATA);
+		if (record?.pid === pid) return record;
+		if (!processAlive(pid)) return null;
+		await new Promise(resolve => setTimeout(resolve, 100));
+	}
+	return null;
+}
+
+/**
+ * 等一个正在启动的同类实例把窗口开出来（连点两下时，先到的进程已经登记、窗口还没开）。
+ * 没有实例在启动就直接返回 null，别让「端口被别的程序占着」白等。
+ */
+async function waitForInstanceWindow(home = DATA, timeout = 4000) {
+	const deadline = Date.now() + timeout;
+	while (Date.now() < deadline) {
+		const record = liveInstance(home);
+		if (!record) return null;
+		if (Number.isInteger(record.windowPid) && record.windowPid > 0) return record;
+		await new Promise(resolve => setTimeout(resolve, 150));
+	}
+	return liveInstance(home);
+}
 
 async function webCmd(options = {}) {
 	const port = Number(flag("--port", "7788"));
 	if (!Number.isInteger(port) || port < 0 || port > 65535) die("端口必须为 0..65535 的整数");
 	const noOpen = argv.includes("--no-open");
-	const autoExit = options.autoExit ?? (argv.includes("--auto-exit") || (isCompiled() && !argv.includes("--no-auto-exit")));
-	const { openAppWindow } = await import("../lib/window.mjs");
-	const probeAliveFor = async candidate => {
-		try {
-			const res = await fetch(`http://127.0.0.1:${candidate}/api/state`, { signal: AbortSignal.timeout(1500) });
-			if (!res.ok) return false;
-			const data = await res.json().catch(() => null);
-			return Boolean(data && typeof data === "object" && ("version" in data || "personas" in data));
-		} catch { return false; }
-	};
+	// 关窗退出：桌面端（exe 双击 / 桌面快捷方式）默认跟随设置页里的「关闭窗口时」；
+	// 命令行 --auto-exit / --no-auto-exit 优先级最高，终端 `agent-purge web` 仍由终端托管。
+	const autoExitFlag = argv.includes("--auto-exit") ? true : argv.includes("--no-auto-exit") ? false : null;
+	// 桌面窗口形态：编译态 exe、显式 --desktop，或安装器快捷方式传的 --auto-exit
+	// （安装器是 Node 瘦包，isCompiled() 为 false，只能靠参数认出「这是窗口」）
+	const desktopManaged = !argv.includes("--no-desktop") &&
+		(argv.includes("--desktop") || isCompiled() || argv.includes("--auto-exit"));
+	const autoExit = autoExitFlag ?? desktopManaged;
+	// 「关窗要不要退」每次现读设置：在设置页改成常驻后，下一次关窗就留下服务，不用重启进程
+	const exitPolicy = () => (autoExitFlag === true ? true : autoExitFlag === false ? false : desktopManaged ? exitOnCloseSetting() : true);
+	const { focusConsoleWindow, openAppWindow, windowProfileDir } = await import("../lib/window.mjs");
+
+	// 单例：同一个数据目录里已经有活着的控制台，就把它的窗口叫到前台然后退出。
+	// 这一步必须在绑端口之前——否则桌面端重复双击会多起一个服务、多开一个页面（issue #14）。
+	const running = liveInstance();
+	if (running) {
+		const ready = Number.isInteger(running.windowPid) && running.windowPid > 0
+			? running
+			: ((await waitForInstanceWindow()) ?? running);
+		await reuseInstance(ready, { noOpen });
+		process.exit(0);
+	}
+
 	let activePort = port;
 	if (port !== 0) {
 		const bind = await bindState(port);
-		if (!bind.ok && !(await probeAliveFor(port))) {
-			const fallback = await findFreePort(7890, 7909);
-			if (!fallback) die(`端口 ${port} 不可用（${bind.code ?? "unknown"}），7890-7909 也没有空闲端口；请用 --port 指定。`);
-			activePort = fallback;
-			console.warn(`端口 ${port} 不可用（${bind.code ?? "unknown"}），改用 ${fallback}。`);
+		if (!bind.ok) {
+			// 端口不可用：可能是另一扇正在启动的同类实例（登记刚写出、窗口还没开），也可能是老版本。
+			// 先给并发的那个一点时间，拿到的实例直接复用，别再顺延端口起第二个服务。
+			const concurrent = await waitForInstanceWindow();
+			if (concurrent) {
+				await reuseInstance(concurrent, { noOpen });
+				process.exit(0);
+			}
+			if (!(await probeServer(port))) {
+				const fallback = await findFreePort(7890, 7909);
+				if (!fallback) die(`端口 ${port} 不可用（${bind.code ?? "unknown"}），7890-7909 也没有空闲端口；请用 --port 指定。`);
+				activePort = fallback;
+				console.warn(`端口 ${port} 不可用（${bind.code ?? "unknown"}），改用 ${fallback}。`);
+			}
 		}
 	}
 	const url = `http://127.0.0.1:${activePort}`;
-	const probeAlive = () => probeAliveFor(activePort);
+	const probeAlive = () => probeServer(activePort);
 
 	// --detach：脱离当前终端后台存活，日志丢弃
 	if (argv.includes("--detach")) {
 		if (port === 0) die("--detach 需要明确端口；随机端口请用前台 web --port 0 --no-open");
-		if (await probeAlive()) {
-			console.log(`agent-purge 后台服务已在运行 → ${url}`);
-			if (!noOpen) {
-				const res = openAppWindow(url);
-				if (res.mode === "app") console.log(`已启动独立桌面窗口（${res.browser}）`);
-			}
-			process.exit(0);
-		}
 		// 源码态 execPath 是 node，得连脚本路径一起给；编译态 execPath 就是 exe 本体
 		const serveArgs = ["--serve", String(activePort)];
 		if (autoExit) serveArgs.push("--auto-exit");
+		if (desktopManaged) serveArgs.push("--desktop");
 		const serve = isCompiled() ? serveArgs : [join(ROOT, "web", "server.mjs"), ...serveArgs];
 		const child = spawn(process.execPath, serve, {
 			detached: true,
@@ -825,39 +977,66 @@ async function webCmd(options = {}) {
 			env: { ...process.env, AGENT_PURGE_HOME: DATA },
 		});
 		child.unref();
-		console.log(`agent-purge 后台启动请求已发送 → ${url}（pid ${child.pid}；请确认服务可连接）`);
+		// 服务进程自己登记实例；等它写完，窗口 pid 才能补进同一条记录
+		await waitForInstance(child.pid);
 		if (!noOpen) {
-			const res = openAppWindow(url);
-			if (res.mode === "app") console.log(`已启动独立桌面窗口（${res.browser}）`);
+			const opened = openAppWindow(url, { profileDir: windowProfileDir(DATA) });
+			if (opened.mode === "app" && opened.pid) updateWindow(DATA, child.pid, opened.pid);
+			if (opened.mode === "app") console.log(L(`已启动独立桌面窗口（${opened.browser}）`, `Opened standalone desktop window (${opened.browser})`));
 		}
+		console.log(L(`agent-purge 后台启动请求已发送 → ${url}（pid ${child.pid}；请确认服务可连接）`, `agent-purge background launch requested → ${url} (pid ${child.pid})`));
 		process.exit(0);
 	}
 
+	// 抢登记：同一数据目录只允许一个进程绑定控制台；抢不到说明刚好有人抢先起了
+	const claim = registerInstance(DATA, activePort);
+	if (!claim.ok) {
+		if (claim.existing) {
+			await reuseInstance(claim.existing, { noOpen });
+			process.exit(0);
+		}
+		die(L(`无法登记控制台实例：${claim.error?.message ?? "登记文件被占用"}；可删除 ${DATA} 下的 web-instance.json 后重试`, `Failed to register console instance: ${claim.error?.message ?? "lock held"}; delete web-instance.json under ${DATA} and retry`));
+	}
+
 	const onServerError = async (e) => {
+		if (port !== 0) releaseInstance(DATA, process.pid);
 		// 端口被占时（如桌面启动器二次双击、老实例未退出）：先探测是否正是活着的 agent-purge
 		if (e.code === "EADDRINUSE") {
 			if (await probeAlive()) {
-				if (!noOpen) {
-					const res = openAppWindow(url);
-					if (res.mode === "app") console.log(`✓ 发现已在运行的 agent-purge 服务，已作为独立桌面窗口打开（${res.browser}）`);
-					else console.log(`✓ 发现已在运行的 agent-purge 服务，已在浏览器中打开：${url}`);
+				// 老版本没有单例登记（或实例在别的数据目录）：先找现成的控制台窗口，
+				// 找得到就只聚焦——升级后老窗口还在的情况下，也不能再补一扇新的（issue #14）。
+				const existing = noOpen ? null : focusConsoleWindow({ profileDir: windowProfileDir(DATA) });
+				if (existing?.focused) console.log(L(`✓ 发现已在运行的 agent-purge 服务，已切换到已有窗口 → ${url}`, `✓ Found running agent-purge service; focused existing window → ${url}`));
+				else if (existing?.found) console.log(L(`✓ 发现已在运行的 agent-purge 服务，窗口已在任务栏 → ${url}`, `✓ Found running agent-purge service; window is in taskbar → ${url}`));
+				else if (!noOpen) {
+					const res = openAppWindow(url, { profileDir: windowProfileDir(DATA) });
+					if (res.mode === "app") console.log(L(`✓ 发现已在运行的 agent-purge 服务，已作为独立桌面窗口打开（${res.browser}）`, `✓ Found running agent-purge service; opened desktop window (${res.browser})`));
+					else console.log(L(`✓ 发现已在运行的 agent-purge 服务，已在浏览器中打开：${url}`, `✓ Found running agent-purge service; opened in browser: ${url}`));
 				} else {
-					console.log(`agent-purge 服务已在 ${url} 运行`);
+					console.log(L(`agent-purge 服务已在 ${url} 运行`, `agent-purge service already running at ${url}`));
 				}
 				process.exit(0);
 			}
-			console.error(`${activePort} 已被占用且未响应 agent-purge 请求：可能是老实例卡死或其他程序占用。`);
-			console.error(`清掉再启：Get-NetTCPConnection -LocalPort ${activePort} -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`);
+			console.error(L(`${activePort} 已被占用且未响应 agent-purge 请求：可能是老实例卡死或其他程序占用。`, `Port ${activePort} is in use and did not respond as agent-purge.`));
+			console.error(L(`清掉再启：Get-NetTCPConnection -LocalPort ${activePort} -State Listen | % { Stop-Process -Id $_.OwningProcess -Force }`, `Free the port and retry (or pass --serve <port>).`));
 		} else {
-			console.error(`web 启动失败：${e.message}`);
+			console.error(L(`web 启动失败：${e.message}`, `Failed to start web console: ${e.message}`));
 		}
 		process.exit(1);
 	};
 
-	const server = serveWeb(activePort, { autoExit, onError: onServerError });
+	// 桌面窗口还活着服务就不退：窗口是本实例的本体，留一个连不上的旧页面只会引出第二扇窗口
+	const server = serveWeb(activePort, {
+		autoExit,
+		desktop: desktopManaged,
+		exitPolicy,
+		windowAlive: () => windowAliveIn(DATA, server.address()?.port ?? activePort),
+		onError: onServerError,
+	});
 	if (!noOpen) {
 		server.once("listening", () => {
-			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`);
+			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`, { profileDir: windowProfileDir(DATA) });
+			if (res.mode === "app" && port !== 0) updateWindow(DATA, process.pid, res.pid);
 			if (res.mode === "app") console.log(`✓ 已作为独立桌面窗口打开（无标签/地址栏，原生客户端体验）`);
 		});
 	}
@@ -991,7 +1170,8 @@ function printMatrix() {
 }
 
 function help() {
-	console.log(`agent-purge —— 把任意 harness 的系统提示词换成你的 persona
+	console.log(L(
+`agent-purge —— 把任意 harness 的系统提示词换成你的 persona
 
 一句话：先「选」，再「用」。选一次，之后所有入口都跟着变。
 
@@ -1051,7 +1231,50 @@ function help() {
 
 harness: pi, opencode, opencode2, dsh, codex, claude, grok, omp, hermes, zcode, antigravity, codebuddy
           opencode2 = @opencode/cli 2.x（v2 插件 API），dsh = DeepSeek Harness（cordis 插件，desktop/web/headless 三形态）。
-`);
+`,
+`agent-purge — One persona, many coding agents
+
+Select once, and every entry point follows.
+
+1. Configure (writes shared state and syncs active targets)
+   agent-purge use <id>             Switch active persona (see agent-purge ls)
+   agent-purge use <id> --for <h>   Override persona for one tool (--for <h> follow to reset)
+   agent-purge pull [repo]          Pull personas from GitHub (default: ZiChuanLan/some-magic)
+   agent-purge persona import <dir> Import .md personas from a local directory
+   agent-purge sync                 Re-sync managed configs and shims
+   agent-purge mode <m>             replace (default) / strict / append / off
+   agent-purge mode <m> --for <h>   Override mode for one tool (--for <h> follow to reset)
+   agent-purge pause                Pause and revert static managed blocks while keeping scope
+   agent-purge resume               Resume previous mode and scope
+   agent-purge clean                Remove all plugins/shims and restore original configs
+   agent-purge update               Check GitHub Releases for updates
+   agent-purge web                  Open the local browser / desktop console
+
+2. Run
+   agent-purge                      Launch the default harness
+   agent-purge <h> [--ask "..."]    Launch a specific harness (--dry-run to preview; -- passes flags)
+   <h>                              Running a shimmed command directly auto-injects the persona
+
+3. Install / Uninstall Channels
+   agent-purge arm <h>|--all        Enable persistent config + CLI shim + /purge
+   agent-purge arm <h> --shim       Enable CLI shim only (prepends to PATH)
+   agent-purge arm <h> --install    Enable persistent config/plugin only
+   agent-purge arm <h> --slash      Enable in-session /purge extension only
+   agent-purge disarm <h>|--all     Disable channels and restore original files
+   agent-purge self-uninstall --yes Revert writes and delete data directory permanently
+   agent-purge self-uninstall --dry-run  Preview what self-uninstall would remove
+   agent-purge project on|off [<h>…] [--dir X]  Manage project-level AGENTS.md / CLAUDE.md blocks
+
+4. Inspect
+   agent-purge status               Show per-tool shim / slash / install status
+   agent-purge ls                   List available personas
+   agent-purge verify [harness…]    Run isolated verification tests (writes verification/latest.json)
+   agent-purge matrix               Show capability matrix (matrix.json)
+   agent-purge armor [...]          plan | preflight | run | judge harness benchmark
+   agent-purge doctor               Detect installed tools and versions
+
+harnesses: pi, opencode, opencode2, dsh, codex, claude, grok, omp, hermes, zcode, antigravity, codebuddy
+`));
 }
 
 /** [cmd] 只用于复现启动参数；人设正文不能整段落进终端/CI 日志。 */

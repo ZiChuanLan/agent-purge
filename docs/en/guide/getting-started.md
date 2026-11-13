@@ -23,7 +23,7 @@ npx agent-purge web
 2. Go to the **Console**, select the active persona and mode, save, then arm the target harnesses.
 3. Follow the per-harness guidance to reload the plugin or start a new session.
 
-The console listens on `http://127.0.0.1:7788`. If that port is reserved or taken it falls forward to a free port in `7890–7909` and opens a desktop window. **Nothing is armed on first launch.**
+The console listens on `http://127.0.0.1:7788`. If that port is reserved or taken it falls forward to a free port in `7890–7909` and opens a desktop window. The desktop app is single-instance: launching it again focuses the window already open. The Settings page controls what closing the window does (quit, or keep the service running, and whether to confirm first) and hosts WebDAV backup; changes apply immediately. **Nothing is armed on first launch.**
 
 ## Installation formats
 

@@ -12,7 +12,7 @@ export function listFiles(root, dir = root) {
 }
 export function runtimeFiles(root) {
   return ['bin','lib','backends','bench'].flatMap(dir => listFiles(join(root,dir)).map(file => `${dir}/${file}`))
-    .concat(['web/server.mjs','web/ui.html','web/app.js','web/model.mjs','web/styles.css',...listFiles(join(root,'web','assets')).map(file=>`web/assets/${file}`),'matrix.json','package.json','README.md','CONTRIBUTING.md','LICENSE'])
+    .concat(['web/server.mjs','web/ui.html','web/app.js','web/model.mjs','web/i18n.mjs','web/styles.css',...listFiles(join(root,'web','assets')).map(file=>`web/assets/${file}`),'matrix.json','package.json','README.md','CONTRIBUTING.md','LICENSE'])
     .concat(existsSync(join(root,'magpie-plugin','README.md')) ? ['magpie-plugin/README.md'] : [])
     .concat(['docs/usage.md','docs/compatibility.md','docs/architecture.md','docs/releasing.md','docs/LEGAL.md',
       'docs/images/console-desktop.png','docs/images/console-mobile.png'].filter(file => existsSync(join(root,file)))).sort();

@@ -52,6 +52,11 @@ test('fresh install: static assets, CSP, no path traversal, power-off without de
   for (const invalid of ['../a', 'a b', '-a', 'a'.repeat(65)]) assert.equal(idRegex.test(invalid), false);
   for (const name of ['app.js','model.mjs','evidence.mjs','styles.css']) assert.equal((await fetch(`${url}/${name}`)).status, 200);
   assert.equal((await fetch(`${url}/package.json`)).status, 404);
+  // 单例探针：只报身份，不跑 detect（issue #14 里重复启动靠它判断“是不是我们自己”）
+  const instance = await api('instance');
+  assert.equal(instance.app, 'agent-purge');
+  assert.equal(instance.pid, child.pid);
+  assert.equal(instance.port, Number(new URL(url).port));
   assert.equal((await api('power', { on: false })).mode, 'off');
   assert.equal((await api('state')).defaultsSet, false);
 });
@@ -80,21 +85,90 @@ test('verification: missing and malformed reports and same-origin guard', async 
   const denied = await fetch(`${url}/api/power`, { method: 'POST', headers: { origin: 'https://foreign.invalid', 'content-type': 'application/json' }, body: '{"on":true}' });
   assert.equal(denied.status, 403);
 });
+test('settings API: 桌面端偏好 + WebDAV 账号，密码只报 hasPassword', async () => {
+  const initial = await api('settings');
+  assert.equal(initial.settings.desktop.exitOnClose, true);
+  assert.equal(initial.settings.desktop.confirmOnClose, true);
+
+  const saved = await api('settings', {
+    desktop: { exitOnClose: false, confirmOnClose: false },
+    webdav: { url: 'https://dav.example.com/dav/', username: 'admin', password: 's3cret', dir: 'backup' },
+  });
+  assert.equal(saved.settings.desktop.exitOnClose, false);
+  assert.equal(saved.settings.webdav.hasPassword, true);
+  assert.equal(JSON.stringify(saved).includes('s3cret'), false, '密码不能出现在设置响应里');
+
+  const state = await api('state');
+  assert.equal(state.settings.webdav.hasPassword, true);
+  assert.equal(state.settings.webdav.dir, 'backup');
+  assert.equal(JSON.stringify(state).includes('s3cret'), false, '密码不能出现在状态响应里');
+  assert.equal(typeof state.desktop.autoExit, 'boolean');
+
+  // 备份动作：没有远端配置时明确报错，而不是静默成功
+  await api('settings', { webdav: { url: '', password: '' } });
+  const noUrl = await fetch(`${url}/api/webdav`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"action":"backup"}' });
+  assert.equal(noUrl.status, 400);
+  const badAction = await fetch(`${url}/api/webdav`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"action":"nuke"}' });
+  assert.equal(badAction.status, 400);
+  const restoreNeedsConfirm = await fetch(`${url}/api/webdav`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"action":"restore"}' });
+  assert.equal(restoreNeedsConfirm.status, 400);
+  // 恢复一圈：/api/webdav restore 之后 /api/state 绝不能因 store 为空炸成 500，active.md 也要同步
+  const { createServer } = await import('node:http');
+  const davFiles = new Map();
+  const davCols = new Set(['/dav/']);
+  const dav = createServer((req, res) => {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    const dir = u.pathname.endsWith('/') ? u.pathname : `${u.pathname}/`;
+    const parent = `${u.pathname.replace(/\/+$/, '').replace(/\/[^/]+$/, '')}/`;
+    if (req.method === 'MKCOL') { if (davCols.has(dir)) res.writeHead(405).end(); else if (!davCols.has(parent)) res.writeHead(409).end(); else { davCols.add(dir); res.writeHead(201).end(); } return; }
+    if (req.method === 'PUT') { if (!davCols.has(parent)) { res.writeHead(409).end(); return; } const c = []; req.on('data', d => c.push(d)); req.on('end', () => { davFiles.set(u.pathname, Buffer.concat(c)); res.writeHead(201).end(); }); return; }
+    if (req.method === 'GET') { const b = davFiles.get(u.pathname); if (!b) { res.writeHead(404).end(); return; } res.writeHead(200).end(b); return; }
+    res.writeHead(207).end();
+  });
+  await new Promise(r => dav.listen(0, '127.0.0.1', r));
+  try {
+    const prevActive = (await api('state')).active;
+    await api('settings', { webdav: { url: `http://127.0.0.1:${dav.address().port}/dav/`, username: 'u', password: 'p', dir: 'ap' } });
+    await api('persona', { id: 'cloud', body: 'FROM_CLOUD', meta: { name: 'Cloud' } });
+    await api('use', { id: 'cloud' });
+    assert.equal((await api('webdav', { action: 'backup' })).ok, true);
+    await api('persona', { id: 'cloud', body: 'LOCAL_DIRTY' });
+    await api('use', { id: prevActive });
+    const restored = await api('webdav', { action: 'restore', confirm: true });
+    assert.equal(restored.ok, true);
+    const afterRes = await fetch(`${url}/api/state`);
+    assert.equal(afterRes.status, 200, 'restore 后紧接着拉 /api/state 必须 200');
+    const afterState = await afterRes.json();
+    assert.equal(afterState.active, 'cloud');
+    assert.equal(readFileSync(join(data, 'personas', 'active.md'), 'utf8').trim(), 'FROM_CLOUD');
+    await api('use', { id: prevActive });
+    await api(`persona?id=cloud`, null, 'DELETE');
+    await api('settings', { webdav: { url: '', password: '' } });
+  } finally {
+    await new Promise(r => dav.close(r));
+  }
+});
 test('UI model: paused resume draft, selection sorting, conservative effect labels', () => {
   assert.deepEqual(configurationOf({ active: 'a', paused: true, prevMode: 'strict', defaults: { mode: 'off' } }), { persona: 'a', mode: 'strict' });
   assert.equal(changed({ a: 1 }, { a: 2 }), true);
   const harnesses = [{ id: 'z', armed: [], found: false }, { id: 'a', armed: [], found: true }, { id: 'b', armed: ['install'] }];
   assert.deepEqual(sortedHarnesses({ harnesses }).map(h => h.id), ['b', 'a']);
-  assert.equal(effectLabel(harnesses[2]), '配置已写入：新开 b 读取；现有会话还没确认'); assert.match(effectLabel(harnesses[2], true), /暂停/);
-  assert.equal(effectLabel({ id: 'c', armed: [], found: false }), '本机没装，装好后再回来开');
+  assert.equal(effectLabel(harnesses[2]), 'Config written: new b sessions will read it; active sessions unconfirmed');
+  assert.match(effectLabel(harnesses[2], true), /pause/i);
+  assert.equal(effectLabel({ id: 'c', armed: [], found: false }), 'Not installed locally; install first to enable');
+  assert.equal(effectLabel(harnesses[2], false, null, 'zh-CN'), '配置已写入：新开 b 读取；现有会话还没确认');
+  assert.match(effectLabel(harnesses[2], true, null, 'zh-CN'), /暂停/);
+  assert.equal(effectLabel({ id: 'c', armed: [], found: false }, false, null, 'zh-CN'), '本机没装，装好后再回来开');
   // dsh 的 /purge off 是 profile 级：UI 要能看出哪个形态被暂停了
-  assert.match(effectLabel({ id: 'dsh', armed: ['install', 'slash'] }, false, { desktop: { enabled: false } }), /未列出的形态尚未确认/);
-  assert.match(effectLabel({ id: 'dsh', profiles: ['desktop', 'web'], armed: ['install', 'slash'] }, false, { desktop: { enabled: false }, web: { enabled: false } }), /已选形态均被/);
-  assert.equal(effectLabel({ id: 'dsh', armed: ['install', 'slash'] }, false, {}), '配置已写入：新开 dsh 读取；现有会话还没确认');
+  assert.match(effectLabel({ id: 'dsh', armed: ['install', 'slash'] }, false, { desktop: { enabled: false } }, 'zh-CN'), /未列出的形态尚未确认/);
+  assert.match(effectLabel({ id: 'dsh', profiles: ['desktop', 'web'], armed: ['install', 'slash'] }, false, { desktop: { enabled: false }, web: { enabled: false } }, 'zh-CN'), /已选形态均被/);
+  assert.equal(effectLabel({ id: 'dsh', armed: ['install', 'slash'] }, false, {}, 'zh-CN'), '配置已写入：新开 dsh 读取；现有会话还没确认');
   assert.match(effectLabel({ id: 'pi', armed: ['slash'], auto: false, caps: { hot: { ok: true, needs: 'slash' } } }), /purge on/);
-  assert.match(effectLabel({ id: 'pi', armed: ['install'], mode: 'off' }), /这家已关闭/);
-  assert.match(scopeSummary({ armed: { a: ['install'], b: [] } }), /已选择 1 个/);
-  assert.match(scopeSummary({ armed: {}, paused: true }), /已暂停/);
+  assert.match(effectLabel({ id: 'pi', armed: ['install'], mode: 'off' }), /Disabled for this tool/);
+  assert.match(scopeSummary({ armed: { a: ['install'], b: [] } }), /1 target\(s\) selected/);
+  assert.match(scopeSummary({ armed: {}, paused: true }), /Paused/);
+  assert.match(scopeSummary({ armed: { a: ['install'], b: [] } }, 'zh-CN'), /已选择 1 个/);
+  assert.match(scopeSummary({ armed: {}, paused: true }, 'zh-CN'), /已暂停/);
 });
 test('one switch per harness: auto picks a working channel, off clears every channel', async () => {
   const armedOf = async id => (await api('state')).harnesses.find(h => h.id === id).armed;
@@ -316,6 +390,26 @@ test('autoExit: 窗口关闭无心跳后自动超时退出', async () => {
   ]);
   assert.equal(code, 0);
   assert.equal(exitedCode, 0);
+});
+
+test('autoExit: 桌面窗口还活着就不因心跳缺失退出（issue #14，避免留下连不上的旧页面）', async () => {
+  const { serveWeb } = await import('../web/server.mjs');
+  let exited = false;
+  const server = serveWeb(0, {
+    autoExit: true,
+    heartbeatTimeout: 200,
+    initialConnectTimeout: 60000,
+    windowAlive: () => true,
+    onExit: () => { exited = true; },
+  });
+  await new Promise(resolve => server.once('listening', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  await fetch(`${base}/api/heartbeat`, { method: 'POST' });
+  // 窗口还在但页面卡住不发心跳：timer 每 2s 检查一次，跨过两轮仍不该退
+  await new Promise(resolve => setTimeout(resolve, 2600));
+  assert.equal(exited, false, '窗口进程还活着，服务必须留着');
+  assert.equal(server.listening, true);
+  await new Promise(resolve => server.close(resolve));
 });
 
 test('serveWeb: custom onError intercepts EADDRINUSE without immediate exit (issue #9)', async () => {

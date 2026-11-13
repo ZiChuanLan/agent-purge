@@ -53,7 +53,7 @@ npx agent-purge web
 2. Go to the **Console**, select your active persona and mode, save, and arm target harnesses.
 3. Follow the harness-specific guidance to reload plugins or start a new session.
 
-The default console runs at `http://127.0.0.1:7788`. On first launch, it will not automatically arm any harness.
+The default console runs at `http://127.0.0.1:7788`. If that port is reserved or taken, it moves to a free port in `7890–7909` and opens a standalone desktop window. The desktop app is single-instance: launching it again focuses the window that is already open instead of starting a second service or a second page. What closing does (quit or keep the service, and whether to confirm) and WebDAV backup live on the Settings page and apply immediately. On first launch, it will not automatically arm any harness.
 
 ![agent-purge Console](docs/images/console-desktop.png)
 

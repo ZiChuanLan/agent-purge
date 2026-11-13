@@ -14,7 +14,7 @@ const EXE = join(DIST, process.platform === 'win32' ? 'agent-purge.exe' : 'agent
 const version = readJSON(join(ROOT,'package.json')).version;
 const targets = {win32:'windows',darwin:'darwin',linux:'linux'};
 const target = `bun-${targets[process.platform]}-${process.arch}`;
-const assets = ['matrix.json','package.json','lib/evidence.mjs','web/ui.html','web/app.js','web/model.mjs','web/styles.css',...listFiles(join(ROOT,'web/assets')).map(file=>`web/assets/${file}`),...listFiles(join(ROOT,'lib/templates/personas')).map(file=>`lib/templates/personas/${file}`)];
+const assets = ['matrix.json','package.json','lib/evidence.mjs','web/ui.html','web/app.js','web/model.mjs','web/i18n.mjs','web/styles.css',...listFiles(join(ROOT,'web/assets')).map(file=>`web/assets/${file}`),...listFiles(join(ROOT,'lib/templates/personas')).map(file=>`lib/templates/personas/${file}`)];
 const duplicates = assets.map(file=>file.split('/').pop()).filter((file,index,all)=>all.indexOf(file)!==index);
 if (duplicates.length) throw new Error('内嵌资源重名：'+duplicates.join(', '));
 const bun = captureBin('bun',['--version']);

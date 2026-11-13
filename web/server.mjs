@@ -25,6 +25,10 @@ import { applyConfiguration, changeChannel, configureHarness, disableHarness } f
 import { ROOT, isCompiled, readResource } from "../lib/root.mjs";
 import { currentVersion } from "../lib/update.mjs";
 import { verificationEvidence } from "../lib/evidence.mjs";
+import { registerInstance, windowAliveIn } from "../lib/web-instance.mjs";
+import { saveSettings, settingsOf, settingsWithSecret, noteWebdavRun } from "../lib/settings.mjs";
+import { resolveLocale } from "../lib/i18n.mjs";
+import { applyArchive, backup as backupToWebdav, download as downloadBackup, pruneSnapshots, testConnection as testWebdavConnection } from "../lib/webdav.mjs";
 
 // 数据（state.json + personas/）在用户目录，不在安装目录
 const DATA = dataHome();
@@ -45,11 +49,12 @@ const matrix = (() => {
 	}
 })();
 let store = null;
+function getStore() { return (store ??= createStore(DATA)); }
 // 同一次实测会拉起真 harness 子进程：同一家同时只能跑一份。
 const verifying = new Set();
 
 export function serveWeb(port = 7788, opts = {}) {
-	const { autoExit = false, heartbeatTimeout = 8000, initialConnectTimeout = 30000, onExit = null, onError = null } = opts;
+	const { autoExit = false, desktop = false, heartbeatTimeout = 8000, initialConnectTimeout = 30000, windowAlive = null, exitPolicy = null, onExit = null, onError = null } = opts;
 	ensureDataHome(isCompiled() ? null : ROOT);
 	store ??= createStore(DATA);
 
@@ -60,7 +65,7 @@ export function serveWeb(port = 7788, opts = {}) {
 
 	// gen：每次发出页面 HTML 都 +1。页面卸载时带着自己那份 gen 上报，
 	// 过期的（上一个页面）一律忽略——否则旧页面的 beacon 晚到，会把刚刷出来的新页面一起带走。
-	const ctx = { heartbeatState, autoExit, gen: 0, leaveTimer: null };
+	const ctx = { heartbeatState, autoExit, desktop, exitPolicy, gen: 0, leaveTimer: null };
 
 	let autoExitTimer = null;
 	const shutdown = (code = 0) => {
@@ -78,6 +83,12 @@ export function serveWeb(port = 7788, opts = {}) {
 		}
 	};
 
+	// 页面离开 / 心跳断了之后要不要退：设置项可能在运行中被改，
+	// 所以每次窗口消失时现读，而不是启动时拍一次快照（issue #14 的「留下连不上的旧页面」）。
+	const shouldExit = () => {
+		try { return typeof exitPolicy === "function" ? exitPolicy() !== false : true; } catch { return true; }
+	};
+
 	if (autoExit) {
 		const startTime = Date.now();
 		autoExitTimer = setInterval(() => {
@@ -87,7 +98,11 @@ export function serveWeb(port = 7788, opts = {}) {
 					shutdown(0);
 				}
 			} else if (now - heartbeatState.lastHeartbeat > heartbeatTimeout) {
-				shutdown(0);
+				// 桌面窗口还活着就继续等：窗口是这个实例的本体。服务先退只会留下一扇连不上的旧页面，
+				// 下次启动又会补开一扇新的——「反复开多个主页」就是这么来的（issue #14）。
+				let alive = false;
+				try { alive = typeof windowAlive === "function" && windowAlive() === true; } catch {}
+				if (!alive && shouldExit()) shutdown(0);
 			}
 		}, 2000);
 		autoExitTimer.unref();
@@ -136,7 +151,7 @@ async function handle(req, res, ctx = {}) {
 	if (isMutating(req.method) && !sameOrigin(req)) return send(res, 403, { error: "只接受本机同源请求" });
 
 	if (req.method === "GET" && (p === "/" || p === "/index.html")) return html(res, ctx);
-	const assets = { '/app.js': 'text/javascript', '/model.mjs': 'text/javascript', '/evidence.mjs': 'text/javascript', '/styles.css': 'text/css' };
+	const assets = { '/app.js': 'text/javascript', '/model.mjs': 'text/javascript', '/i18n.mjs': 'text/javascript', '/evidence.mjs': 'text/javascript', '/styles.css': 'text/css' };
 	if (req.method === "GET" && Object.hasOwn(assets, p)) {
 		res.writeHead(200, { 'content-type': `${assets[p]}; charset=utf-8`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
 		return res.end(readResource(p === '/evidence.mjs' ? 'lib/evidence.mjs' : `web/${p.slice(1)}`));
@@ -154,6 +169,10 @@ async function handle(req, res, ctx = {}) {
 			} catch { /* 落到 404 */ }
 		}
 		return send(res, 404, { error: "not found" });
+	}
+// 单例探针：只报身份，不碰 detect/状态重组，保证在服务忙的时候也能秒回。
+	if (req.method === "GET" && p === "/api/instance") {
+		return send(res, 200, { app: "agent-purge", pid: process.pid, port: req.socket.localPort, version: currentVersion() });
 	}
 	if (req.method === "GET" && p === "/api/verification") {
 		const file = join(DATA, 'verification', 'latest.json');
@@ -189,13 +208,15 @@ async function handle(req, res, ctx = {}) {
 		req.resume();
 		const gen = url.searchParams.get("gen");
 		const live = Boolean(ctx.autoExit) && gen !== null && gen === String(ctx.gen);
-		if (live) {
+		// 窗口形态下「关窗是否退出」由设置决定：改成常驻后，关窗只让页面走、服务留下
+		const exitNow = live && (typeof ctx.exitPolicy === "function" ? ctx.exitPolicy() !== false : true);
+		if (exitNow) {
 			ctx.leaveTimer = setTimeout(() => { ctx.leaveTimer = null; ctx.shutdown(0); }, LEAVE_GRACE);
 			ctx.leaveTimer.unref?.();
 		}
-		return send(res, 200, { ok: true, exit: live });
+		return send(res, 200, { ok: true, exit: exitNow });
 	}
-	if (req.method === "GET" && p === "/api/state") return send(res, 200, await state(url.searchParams.get("versions") === "1"));
+	if (req.method === "GET" && p === "/api/state") return send(res, 200, await state(url.searchParams.get("versions") === "1", ctx));
 	if (req.method === "GET" && p === "/api/project") return send(res, 200, projectView(url.searchParams.get("dir"), { scope: url.searchParams.get("scope"), persona: url.searchParams.get("persona") }));
 	if (req.method === "GET" && p === "/api/armor") return send(res, 200, armorState());
 	if (req.method === "POST" && p === "/api/apply") return send(res, 200, applyChanges(await body(req)));
@@ -214,6 +235,9 @@ async function handle(req, res, ctx = {}) {
 	if (req.method === "POST" && p === "/api/arm") return send(res, 200, applyArm(await body(req)));
 	if (req.method === "POST" && p === "/api/project") return send(res, 200, saveProject(await body(req)));
 	if (req.method === "POST" && p === "/api/arm-all") return send(res, 200, applyArmAll(await body(req)));
+	if (req.method === "GET" && p === "/api/settings") return send(res, 200, settingsView(ctx));
+	if (req.method === "POST" && p === "/api/settings") return send(res, 200, saveSettingsView(await body(req), ctx));
+	if (req.method === "POST" && p === "/api/webdav") return send(res, 200, await webdavAction(await body(req), ctx));
 	if (req.method === "POST" && p === "/api/clean") {
 		const payload = await body(req);
 		const { clean } = await import("../lib/clean.mjs");
@@ -399,7 +423,7 @@ function armorState() {
 	};
 }
 
-async function state(withVersions) {
+async function state(withVersions, ctx = {}) {
 	// 先跟磁盘对账，再报数：armed 是缓存，磁盘才是真相
 	const reconciled = await reconcileArmed(DATA);
 	const found = detect({ versions: withVersions });
@@ -471,8 +495,8 @@ async function state(withVersions) {
 		version: currentVersion(),
 		harnesses,
 		reconciled,
-		personas: store.list().map((x) => ({ id: x.id, meta: x.meta, body: x.body, chars: x.body.trim().length })),
-		active: store.activeId(),
+		personas: getStore().list().map((x) => ({ id: x.id, meta: x.meta, body: x.body, chars: x.body.trim().length })),
+		active: getStore().activeId(),
 		persona: st.persona,
 		overrides: st.overrides ?? {},
 		defaults,
@@ -492,6 +516,11 @@ async function state(withVersions) {
 		modes: MODES,
 		piAuto: st.piAuto === true,
 		ompAuto: st.ompAuto === true,
+		// 桌面端偏好 + WebDAV 备份账号（密码只报 hasPassword，从不回显）
+		settings: settingsOf(st),
+		locale: resolveLocale({ setting: settingsOf(st).language }),
+		// 桌面形态：由双击 exe / 桌面快捷方式拉起的窗口；终端托管的服务不算
+		desktop: { managed: Boolean(ctx.desktop), autoExit: Boolean(ctx.autoExit), pid: process.pid },
 		shimDir: shims[0]?.dir ?? null,
 		slashes: slashes,
 	};
@@ -519,7 +548,7 @@ function applyChanges(payload) {
 		knownHarness(payload.harness);
 		if (matrix.harnesses[payload.harness].class === "unsupported") throw httpError(400, "默认执行器未开放启动入口");
 	}
-	if (payload.persona !== undefined && (typeof payload.persona !== "string" || !store.read(payload.persona))) throw httpError(400, "人设不存在或标识无效");
+	if (payload.persona !== undefined && (typeof payload.persona !== "string" || !getStore().read(payload.persona))) throw httpError(400, "人设不存在或标识无效");
 	if (payload.mode !== undefined && !MODES.includes(payload.mode)) throw httpError(400, "模式无效");
 	if (payload.resumeMode !== undefined && !["strict", "replace", "append"].includes(payload.resumeMode)) throw httpError(400, "恢复模式无效");
 	if (payload.enabled !== undefined) booleanField(payload, "enabled");
@@ -737,6 +766,63 @@ function saveDefaults(payload) {
 	return { ...report, defaults: loadState(DATA).state.default };
 }
 
+/* ── 设置页：桌面端偏好 + WebDAV 备份 ─────────────────────────────────────── */
+
+function settingsView(ctx = {}) {
+	const { state: st } = loadState(DATA);
+	return {
+		settings: settingsOf(st),
+		locale: resolveLocale({ setting: settingsOf(st).language }),
+		// 关窗退出这一条只在「双击 exe / 桌面窗口」形态下才有意义，脚本态终端托管要看终端
+		desktop: {
+			managed: Boolean(ctx.desktop),
+			autoExit: Boolean(ctx.autoExit),
+			pid: process.pid,
+		},
+	};
+}
+
+function saveSettingsView(payload, ctx = {}) {
+	if (!plainObject(payload)) throw httpError(400, "设置载荷应为对象");
+	const next = saveSettings(DATA, { language: payload.language, desktop: payload.desktop, webdav: payload.webdav });
+	// 桌面形态下 exitPolicy 每次现读设置，所以改完立刻生效，不需要重启进程；
+	// 只有终端托管的服务不吃这条设置，如实说明。
+	return {
+		ok: true,
+		settings: settingsOf(next),
+		locale: resolveLocale({ setting: settingsOf(next).language }),
+		appliesNow: Boolean(ctx.desktop),
+	};
+}
+
+async function webdavAction(payload) {
+	if (!plainObject(payload)) throw httpError(400, "请求载荷应为对象");
+	const action = payload.action;
+	if (!["test", "backup", "restore"].includes(action)) throw httpError(400, `未知的备份操作: ${action}`);
+	const { state: st } = loadState(DATA);
+	const settings = settingsWithSecret(st);
+	if (!settings.webdav.url) throw httpError(400, "先在设置里填 WebDAV 地址");
+
+	if (action === "test") return { ok: true, ...(await testWebdavConnection(settings)) };
+	if (action === "backup") {
+		const result = await backupToWebdav(DATA, settings);
+		noteWebdavRun(DATA, { lastBackupAt: result.at });
+		return { ok: true, ...result };
+	}
+	// restore：先下载校验，再在配置锁里整段写回，避免和「保存人设 / 应用配置」交叉写同一个文件
+	if (payload.confirm !== true) throw httpError(400, "恢复会覆盖本机人设与设置，需要先确认");
+	const downloaded = await downloadBackup(settings);
+	const result = withControlLock(DATA, () => applyArchive(DATA, downloaded, { snapshotBefore: payload.snapshot !== false }));
+	pruneSnapshots(DATA, 10);
+	noteWebdavRun(DATA, { lastRestoreAt: new Date().toISOString() });
+	// 人设文件已经换过：立刻重建 store，并把 active.md 同步到恢复出来的人设
+	store = createStore(DATA);
+	store.refreshActive();
+	const restoredActive = store.activeId();
+	if (restoredActive && store.read(restoredActive)) store.materialize(restoredActive);
+	return { ok: true, ...result, settings: settingsOf(loadState(DATA).state) };
+}
+
 function saveDshProfile(payload) {
 	const profile = payload.profile;
 	if (!DSH_PROFILES.includes(profile)) throw httpError(400, `未知 profile: ${profile}`);
@@ -752,7 +838,7 @@ function savePersona(payload) {
 	return withControlLock(DATA, () => {
 		// 只覆盖表单带上来的键，其余 frontmatter（harness / order / description...）原样保留：
 		// 旧实现直接拿表单三个字段重写文件，点一次保存就把手写的键全吃掉
-		const meta = { ...(store.read(id)?.meta ?? {}) };
+		const meta = { ...(getStore().read(id)?.meta ?? {}) };
 		const given = payload.meta && typeof payload.meta === "object" ? payload.meta : {};
 		for (const [k, v] of Object.entries(given)) {
 			if (k === "id" || v === undefined) continue;
@@ -775,9 +861,9 @@ function savePersona(payload) {
 			if (list.length) meta.model = list;
 			else delete meta.model;
 		}
-		const current = store.activeId() === id;
+		const current = getStore().activeId() === id;
 		const referenced = Object.values(loadState(DATA).state.overrides ?? {}).some(value => value?.persona === id);
-		const saved = store.save(id, { meta: { ...meta, id }, body: payload.body });
+		const saved = getStore().save(id, { meta: { ...meta, id }, body: payload.body });
 		const applied = current || payload.apply === true ? applyConfiguration(DATA, { persona: id }) : referenced ? applyConfiguration(DATA) : null;
 		return { ok: applied?.ok ?? true, applied, persona: { id: saved.id, meta: saved.meta, body: saved.body } };
 	});
@@ -786,19 +872,19 @@ function savePersona(payload) {
 function deletePersona(id) {
 	return withControlLock(DATA, () => {
 		if (typeof id !== "string" || !isValidId(id)) throw httpError(400, "人设标识无效");
-		if (!store.read(id)) throw httpError(400, "找不到这个人设");
-		if (store.list().length <= 1) throw httpError(409, "至少保留一个人设");
+		if (!getStore().read(id)) throw httpError(400, "找不到这个人设");
+		if (getStore().list().length <= 1) throw httpError(409, "至少保留一个人设");
 		const references = Object.entries(loadState(DATA).state.overrides ?? {}).filter(([, value]) => value?.persona === id).map(([harness]) => harness);
 		if (references.length) throw httpError(409, `人设仍被引用：${references.join("、")}，请先调整分家选择`);
-		const current = store.activeId() === id;
-		if (!store.remove(id)) throw httpError(400, "人设标识无效");
-		const applied = current ? applyConfiguration(DATA, { persona: store.activeId() }) : null;
-		return { ok: applied?.ok ?? true, active: store.activeId(), applied };
+		const current = getStore().activeId() === id;
+		if (!getStore().remove(id)) throw httpError(400, "人设标识无效");
+		const applied = current ? applyConfiguration(DATA, { persona: getStore().activeId() }) : null;
+		return { ok: applied?.ok ?? true, active: getStore().activeId(), applied };
 	});
 }
 
 function usePersona(payload) {
-	return { ...applyChanges({ persona: payload.id ?? "" }), active: store.activeId() };
+	return { ...applyChanges({ persona: payload.id ?? "" }), active: getStore().activeId() };
 }
 
 async function handleImportPersonas(payload) {
@@ -809,14 +895,14 @@ async function handleImportPersonas(payload) {
 	try {
 		const result = await importPersonas(source, DATA, { overwrite });
 		let applied = null;
-		if (payload?.activateId && store.read(payload.activateId)) {
+		if (payload?.activateId && getStore().read(payload.activateId)) {
 			applied = applyConfiguration(DATA, { persona: payload.activateId });
 		}
 		return {
 			ok: true,
 			result,
-			personas: store.list().map((x) => ({ id: x.id, meta: x.meta, body: x.body, chars: x.body.trim().length })),
-			persona: store.activeId(),
+			personas: getStore().list().map((x) => ({ id: x.id, meta: x.meta, body: x.body, chars: x.body.trim().length })),
+			persona: getStore().activeId(),
 			applied,
 		};
 	} catch (e) {
@@ -836,7 +922,7 @@ function saveHarnessConfig(payload) {
 		patch[key] = value === null || value === "" || value === "follow" ? null : value;
 	}
 	if (!Object.keys(patch).length) throw httpError(400, "缺少分家配置字段");
-	if (patch.persona && !store.read(patch.persona)) throw httpError(400, "人设不存在");
+	if (patch.persona && !getStore().read(patch.persona)) throw httpError(400, "人设不存在");
 	if (patch.mode && !MODES.includes(patch.mode)) throw httpError(400, "模式无效");
 	const applied = configureHarness(DATA, id, patch);
 	return { ok: applied.ok, applied, overrides: loadState(DATA).state.overrides ?? {}, effective: applied.effective };
@@ -910,7 +996,11 @@ function localHost(req) {
 const html = (res, ctx = {}) => {
 	// 每次发页面都换一个代号：/api/leave 只认自己那一代，旧页面的 beacon 晚到也不会误伤新页面
 	const gen = String((ctx.gen = (ctx.gen ?? 0) + 1));
+	let locale = "en";
+	try { locale = resolveLocale({ setting: settingsOf(loadState(DATA).state).language }); } catch {}
 	const page = readResource("web/ui.html").toString("utf8")
+		.replace(/<html lang="[^"]*">/, `<html lang="${locale}">`)
+		.replace('<meta name="ap-locale" content="">', `<meta name="ap-locale" content="${locale}">`)
 		.replace('<meta name="ap-server-gen" content="">', `<meta name="ap-server-gen" content="${gen}">`);
 	return res
 		.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" })
@@ -978,6 +1068,11 @@ function body(req) {
 	});
 }
 
+/** 桌面形态下「关窗是否退出」：每次现读 state.json，设置改了立刻生效。 */
+function exitOnCloseNow() {
+	try { return settingsOf(loadState(DATA).state).desktop.exitOnClose; } catch { return true; }
+}
+
 // 只有被直接当脚本跑（node web/server.mjs --serve 7788）才自启动；
 // 被 bin 导入时必须保持安静——否则 `agent-purge web --serve 7789` 会两个端口各起一个实例，
 // 并在第二个 bind 时吐出误导性的“端口已被占用：老实例还在跑”。
@@ -986,5 +1081,22 @@ const selfPath = fileURLToPath(import.meta.url);
 const isEntry = Boolean(process.argv[1]) && selfPath.endsWith(".mjs") && resolve(process.argv[1]) === selfPath;
 if (isEntry && process.argv.includes("--serve")) {
 	const servePort = Number(process.argv[process.argv.indexOf("--serve") + 1] ?? 7788);
-	serveWeb(servePort, { autoExit: process.argv.includes("--auto-exit") });
+	// 单例：源码态 `web --detach` 直接跑的就是这个入口，同样要登记实例
+	ensureDataHome(isCompiled() ? null : ROOT);
+	const claim = registerInstance(dataHome(), servePort);
+	if (!claim.ok) {
+		if (claim.error) {
+			console.error(`控制台实例登记失败：${claim.error.message}`);
+			process.exit(1);
+		}
+		console.log(`agent-purge 控制台已在运行（端口 ${claim.existing?.port ?? "?"}），无需重复启动。`);
+		process.exit(0);
+	}
+	serveWeb(servePort, {
+		autoExit: process.argv.includes("--auto-exit"),
+		desktop: process.argv.includes("--desktop"),
+		// 关窗退不退现读设置：改成常驻后不用重启已经起着的服务
+		exitPolicy: () => (process.argv.includes("--desktop") ? exitOnCloseNow() : true),
+		windowAlive: () => windowAliveIn(dataHome(), servePort),
+	});
 }
