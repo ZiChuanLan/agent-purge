@@ -438,6 +438,11 @@
         <label for="import-source" data-i18n="import.sourceLabel">Source</label>
         <input id="import-source" class="input" placeholder="owner/repo or /path/to/prompts" data-i18n-attr="placeholder:import.sourcePlaceholder" required autocomplete="off">
       </div>
+      <div class="field">
+        <label for="import-mirror" data-i18n="import.mirrorLabel">GitHub Mirror (Optional)</label>
+        <input id="import-mirror" class="input" placeholder="e.g. https://gh-proxy.com (leave blank for direct)" data-i18n-attr="placeholder:import.mirrorPlaceholder" autocomplete="off" spellcheck="false">
+        <span class="hint" data-i18n="import.mirrorHint">Proxy prefix for GitHub API &amp; raw files in restricted networks; saved locally and leave blank for direct access.</span>
+      </div>
       <label class="check"><input type="checkbox" id="import-overwrite" checked><span data-i18n="import.overwrite">Overwrite existing IDs</span></label>
       <div id="import-status" class="status-box" hidden></div>
     </div>

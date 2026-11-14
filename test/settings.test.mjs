@@ -50,7 +50,7 @@ test('settings: 保存只覆盖点名的键，密码不回显但能取到', () =
 	assert.equal(view.desktop.confirmOnClose, true, '没点名的键保持原值');
 });
 
-test('settings: 空密码等于清除；地址与目录做基本校验', () => {
+test('settings: 空密码等于清除；地址与目录做基本校验；GitHub 镜像地址规范化与清除', () => {
 	const home = freshHome('clear');
 	saveSettings(home, { webdav: { url: 'https://dav.example.com', password: 'x' } });
 	assert.equal(settingsOf(loadState(home).state).webdav.hasPassword, true);
@@ -58,6 +58,13 @@ test('settings: 空密码等于清除；地址与目录做基本校验', () => {
 	assert.equal(settingsOf(loadState(home).state).webdav.hasPassword, false);
 	assert.throws(() => saveSettings(home, { webdav: { url: 'ftp://nope' } }), /http/);
 	assert.throws(() => saveSettings(home, { webdav: { dir: '../../etc' } }), /\.\./);
+
+	assert.equal(settingsOf(loadState(home).state).githubMirror, '');
+	saveSettings(home, { githubMirror: 'gh-proxy.com/' });
+	assert.equal(settingsOf(loadState(home).state).githubMirror, 'https://gh-proxy.com');
+	saveSettings(home, { githubMirror: '' });
+	assert.equal(settingsOf(loadState(home).state).githubMirror, '');
+	assert.throws(() => saveSettings(home, { githubMirror: 'ftp://mirror.invalid' }), /http/);
 });
 
 /* ── WebDAV：用一个最小 WebDAV 服务端打真请求 ────────────────────────────── */

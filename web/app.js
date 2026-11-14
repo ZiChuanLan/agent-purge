@@ -1168,7 +1168,7 @@ $('persona-select').addEventListener('change', () => {
   renderConfigControls();
 });
 document.querySelectorAll('[name=mode]').forEach(el => el.addEventListener('change', () => { draft.mode = mode(); renderConfigControls(); }));
-$('quick-pull-btn')?.addEventListener('click', () => $('import-dialog')?.showModal());
+$('quick-pull-btn')?.addEventListener('click', () => openImportDialog());
 $('quick-new-btn')?.addEventListener('click', () => { navigate('library'); $('new-persona')?.click(); });
 $('edit-current').addEventListener('click', () => { openEditor(draft.persona); navigate('library'); });
 $('new-persona').addEventListener('click', () => openEditor(''));
@@ -1424,14 +1424,17 @@ $('delete-persona').addEventListener('click', () => {
 const importDialog = $('import-dialog');
 const importStatus = $('import-status');
 const importSourceInput = $('import-source');
+const importMirrorInput = $('import-mirror');
 const startImportBtn = $('start-import');
-$('pull-personas')?.addEventListener('click', () => {
+function openImportDialog() {
   if (!importDialog) return;
   if (!importSourceInput.value.trim()) importSourceInput.value = 'ZiChuanLan/some-magic';
+  if (importMirrorInput) importMirrorInput.value = state?.settings?.githubMirror || '';
   importStatus.hidden = true; importStatus.className = 'status-box'; importStatus.textContent = '';
   startImportBtn.disabled = false; startImportBtn.textContent = t('import.start');
   importDialog.showModal();
-});
+}
+$('pull-personas')?.addEventListener('click', () => openImportDialog());
 $('close-import')?.addEventListener('click', () => importDialog?.close());
 $('cancel-import')?.addEventListener('click', () => importDialog?.close());
 importDialog?.addEventListener('click', e => {
@@ -1442,13 +1445,17 @@ $('import-form')?.addEventListener('submit', async e => {
   e.preventDefault();
   const source = importSourceInput.value.trim();
   if (!source) return;
+  const mirror = importMirrorInput?.value.trim() ?? '';
   const overwrite = $('import-overwrite').checked;
   startImportBtn.disabled = true; startImportBtn.textContent = t('import.pulling');
   importStatus.hidden = false; importStatus.className = 'status-box';
-  importStatus.textContent = pick(`正在从 ${source} 拉取…`, `Pulling from ${source}…`);
+  importStatus.textContent = mirror
+    ? pick(`正在经镜像 ${mirror} 从 ${source} 拉取…`, `Pulling from ${source} via ${mirror}…`)
+    : pick(`正在从 ${source} 拉取…`, `Pulling from ${source}…`);
   try {
-    const res = await api('persona/import', { source, overwrite });
+    const res = await api('persona/import', { source, mirror, overwrite });
     if (!res.ok) throw new Error(res.error || pick('拉取失败', 'Pull failed'));
+    if (res.settings && state) state.settings = res.settings;
     const { total = 0, imported = [] } = res.result || {};
     importStatus.className = 'status-box success';
     const names = listJoin(imported.map(x => x.name || x.id).slice(0, 3));
