@@ -131,7 +131,7 @@ agent-purge status
 `arm <h>` は利用可能な常驻、shim、slash チャネルをまとめて有効化します。プロジェクトチャネルはディレクトリごとに個別管理します。
 
 ## 対応エージェント
-**一言で**: system prompt 全体の入口を持つホスト（Codex、OpenCode、DSH、Claude、Gemini CLI、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）は本当に置換します。Claude と Kilo は残留あり。Antigravity、Crush、Continue、Auggie、Goose、zcode は追記のみで、元の身元がプロンプトに残ります。
+**一言で**: system prompt 全体の入口を持つホスト（Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）は本当に置換します。Claude と Kilo は残留あり。Antigravity、Crush、Continue、Auggie、Goose、zcode は追記のみで、元の身元がプロンプトに残ります。
 
 チャネル、ホットスイッチのタイミング、実測値、内蔵セーフティ条項、残留はドキュメントサイトにまとめています：
 

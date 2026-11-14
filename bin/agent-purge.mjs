@@ -391,8 +391,17 @@ async function launch(name) {
 	{
 		const c = capsFor(name);
 		if (!c.shim.ok && !c.install.ok && !c.slash.ok && mode !== "off") {
-			const why = [c.shim, c.install, c.slash].map((x) => x.why).filter(Boolean)[0];
-			console.log(`[提示] ${name} 注入不进去，本次是原样启动：${why}`);
+			// 点名启动（agent-purge <h>）也是真注入通道：它就是本次这次启动本身。
+			// 曾经漏判这条，导致 qwen/kimi/kiro 这些明明在注入的家被报成「注入不进去，原样启动」。
+			if (c.launch.ok) {
+				console.log(`[通道] 本次经点名启动注入：${c.launch.how ?? `agent-purge ${name}`}（不进 PATH、不改配置；只影响本次会话）`);
+			} else if (c.launch.backend) {
+				// 后端有注入实现、只是本机没有这个命令：这不是「注入不进去」，是「还没装」
+				console.log(`[通道] 这次会按 ${c.launch.how ?? `agent-purge ${name}`} 注入，但本机缺命令：${c.launch.why}`);
+			} else {
+				const why = [c.launch, c.shim, c.install, c.slash].map((x) => x.why).filter(Boolean)[0];
+				console.log(`[提示] ${name} 注入不进去，本次是原样启动：${why}`);
+			}
 		}
 	}
 

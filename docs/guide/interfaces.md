@@ -14,7 +14,7 @@
 
 ## 规则文件
 
-项目目录及各家全局规则文件（`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`）统一在**「规则文件」**页按作用范围与指定人设写入。
+项目目录及各家全局规则文件（`AGENTS.md` / `CLAUDE.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`）统一在**「规则文件」**页按作用范围与指定人设写入。
 
 ![agent-purge 规则文件](/images/project-rules.png)
 

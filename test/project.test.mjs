@@ -156,7 +156,8 @@ test("project：多项目总览汇总已写入文件与当前目录", () => {
 	assert.equal(current?.written, 1);
 	const other = overview.find(item => item.dir === second);
 	assert.equal(other?.written, 1);
-	assert.equal(other?.files, 7);
+	// 6 个规则文件：删掉 Gemini CLI 后 GEMINI.md 不再写入（原为 7）
+	assert.equal(other?.files, 6);
 });
 
 test("project：共享文件暂停时保留各自选择，最后一方暂停才撤块", () => {

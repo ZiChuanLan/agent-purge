@@ -14,7 +14,7 @@ System-prompt takeover lives in the **Console**. Each harness gets a row showing
 
 ## Project rules
 
-Project directories and per-harness global rule files (`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`) are managed on the **Rules** page, by scope and persona.
+Project directories and per-harness global rule files (`AGENTS.md` / `CLAUDE.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`) are managed on the **Rules** page, by scope and persona.
 
 ![agent-purge project rules](/images/project-rules.png)
 

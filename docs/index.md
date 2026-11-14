@@ -60,7 +60,7 @@ agent-purge arm pi --slash
 
 不同宿主的净化能力差别很大，这个项目选择把差别写清楚：
 
-- **真替换**：Codex、OpenCode、DSH、Claude、Gemini CLI、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp —— 宿主提供整段 system prompt 入口，人设直接顶掉原生提示词。
+- **真替换**：Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp —— 宿主提供整段 system prompt 入口，人设直接顶掉原生提示词。
 - **部分替换**：Claude（残留 62 字身份句）、Kilo（`soul()` 前置身份）。
 - **只能追加**：Antigravity、Crush、Continue、Auggie、Goose、zcode —— 宿主没有整段入口，原生身份仍在提示词里。
 

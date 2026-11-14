@@ -14,7 +14,7 @@
 
 ## プロジェクトルール
 
-プロジェクトディレクトリと各ホストのグローバルルールファイル（`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`）は**「ルールファイル」**ページで、スコープとペルソナを指定して書き込みます。
+プロジェクトディレクトリと各ホストのグローバルルールファイル（`AGENTS.md` / `CLAUDE.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`）は**「ルールファイル」**ページで、スコープとペルソナを指定して書き込みます。
 
 ![agent-purge プロジェクトルール](/images/project-rules.png)
 

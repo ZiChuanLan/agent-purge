@@ -60,7 +60,7 @@ agent-purge arm pi --slash
 
 ホストごとに浄化能力は大きく異なり、このプロジェクトはその差を明記します：
 
-- **完全置換**：Codex、OpenCode、DSH、Claude、Gemini CLI、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp —— ホストが system prompt 全体の入口を提供します。
+- **完全置換**：Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp —— ホストが system prompt 全体の入口を提供します。
 - **部分置換**：Claude（62 文字の身元文が残留）、Kilo（`soul()` が身元を前置）。
 - **追記のみ**：Antigravity、Crush、Continue、Auggie、Goose、zcode —— 全体入口がなく、元の身元がプロンプトに残ります。
 

@@ -292,6 +292,10 @@ main {
 .chip.is-bad {
   background: var(--bad-soft); color: var(--bad); border-color: var(--bad-line);
 }
+/* 未来支持：未确定能不能接管的家。灰掉，不参与「可接管」的视觉权重。 */
+.chip.is-future {
+  background: var(--surface-2); color: var(--muted); border-color: var(--line);
+}
 .chip.is-fixed {
   background: var(--surface-2); color: var(--faint); border-color: var(--line);
 }
@@ -609,6 +613,8 @@ main {
   box-shadow: var(--shadow-md);
 }
 .tool-card.is-missing { opacity: 0.78; }
+.tool-card.is-future { opacity: 0.6; }
+.tool-card.is-future .tool-icon { filter: grayscale(1); }
 .tool-card.is-entering { animation: card-wipe 340ms var(--ease) both; }
 .tool-card.is-entering:nth-child(2) { animation-delay: 24ms; }
 .tool-card.is-entering:nth-child(3) { animation-delay: 48ms; }

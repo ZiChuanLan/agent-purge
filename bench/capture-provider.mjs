@@ -7,6 +7,9 @@ const textOf = content => typeof content === 'string' ? content : Array.isArray(
 export function inspectRequest(body, marker = '') {
  const sections=[];
  if(body.system) sections.push({role:'system',field:'system',text:textOf(body.system)});
+ // Augment（auggie）：system 层是顶层字符串 system_prompt；rules / user_guidelines 是追加的规则数组。
+ if(typeof body.system_prompt==='string') sections.push({role:'system',field:'system_prompt',text:body.system_prompt});
+ for(const key of ['rules','user_guidelines','workspace_guidelines']) if(Array.isArray(body[key])) sections.push({role:'system',field:key,text:body[key].map(r=>typeof r==='string'?r:(r?.content??r?.text??'')).join('\n')});
  if(body.instructions) sections.push({role:'system',field:'instructions',text:textOf(body.instructions)});
  for(const key of ['messages','input']) if(Array.isArray(body[key])) body[key].forEach((m,i)=>{if(['system','developer','user'].includes(m.role))sections.push({role:m.role,field:`${key}[${i}].content`,text:textOf(m.content)});});
  // Gemini 原生协议：systemInstruction.parts + contents[]（role 是 user/model，没有 system 角色）
@@ -21,6 +24,8 @@ export function inspectRequest(body, marker = '') {
 }
 // Auxiliary requests can contain the same user query; never grade a title/summary as the main turn.
 export function requestKind(body, query = 'Reply CAPTURE_OK.') {
+ // Augment 的当前回合在 message（字符串），历史在 chat_history。
+ if(typeof body.message==='string'&&body.message.includes(query)) return 'main';
  const {text} = inspectRequest(body);
  const users = (body.messages ?? body.input ?? []).filter(m => m.role === 'user').map(m => textOf(m.content));
  // strict can replace the title system as well; its task envelope still identifies the auxiliary call.
@@ -28,11 +33,31 @@ export function requestKind(body, query = 'Reply CAPTURE_OK.') {
  // Gemini 原生协议把用户回合放在 contents[]，没有 messages/input
  return JSON.stringify(body.messages ?? body.input ?? body.contents ?? '').includes(query) ? 'main' : 'unclassified';
 }
+// 结构化输出请求（responseJsonSchema / response_format）要回一份符合 schema 的 JSON，
+// 否则宿主会认为模型答非所问、无限重试，主回合根本发不出来。
+function sampleFor(schema) {
+ if(!schema||typeof schema!=='object') return null;
+ const t=String(schema.type||'').toUpperCase();
+ if(t==='OBJECT'||schema.properties){const out={};for(const [k,v] of Object.entries(schema.properties||{}))out[k]=sampleFor(v);return out;}
+ if(t==='ARRAY') return [sampleFor(schema.items||{type:'STRING'})];
+ if(t==='INTEGER'||t==='NUMBER') return typeof schema.minimum==='number'?schema.minimum:1;
+ if(t==='BOOLEAN') return false;
+ if(Array.isArray(schema.enum)&&schema.enum.length) return schema.enum[0];
+ return 'capture';
+}
+function structuredAnswer(body){
+ const schema=body?.generationConfig?.responseJsonSchema??body?.response_format?.json_schema?.schema??body?.response_format?.schema;
+ if(!schema) return null;
+ const sample=sampleFor(schema);
+ return sample===null?null:JSON.stringify(sample);
+}
 function response(res, body, protocol, id) {
- const answer='CAPTURE_OK';const model=body.model||'capture';
+ const answer=structuredAnswer(body)??'CAPTURE_OK';const model=body.model||'capture';
  if(protocol==='gemini'){
-  // Gemini 原生：gemini-3.x-preview:streamGenerateContent?alt=sse → SSE data 帧
+  // Gemini 原生：:streamGenerateContent?alt=sse 才回 SSE；:generateContent 必须回整包 JSON，
+  // 否则 CLI 的 JSON 解析器会读到 "data: {" 直接崩（分类器/路由这些内部调用走的就是非流式）。
   const payload={candidates:[{content:{parts:[{text:answer}],role:'model'},finishReason:'STOP',index:0}],usageMetadata:{promptTokenCount:10,candidatesTokenCount:2,totalTokenCount:12}};
+  if(!/streamGenerateContent/i.test(res.__url||'')&&!body.stream){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(payload));return;}
   res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache'});
   res.write(`data: ${JSON.stringify(payload)}\n\n`);res.end();return;
  }
@@ -62,12 +87,33 @@ export async function startCaptureProvider(outDir) {
   if(req.method==='CONNECT'||/^https?:\/\//i.test(req.url)){res.writeHead(403);res.end('No upstream forwarding');return;}
   if(req.method==='GET'&&/\/models(?:\?|$)/.test(req.url)){res.setHeader('content-type','application/json');res.end(JSON.stringify({object:'list',data:[{id:'capture',object:'model',created:1,owned_by:'fixture'}]}));return;}
   // Gemini 原生走 /v1beta/models/<model>:streamGenerateContent?alt=sse
+  // Augment（auggie）：/get-models 与几个 settings/tools 是启动握手的 GET/POST，必须先答，否则主回合发不出来。
+  if(/^\/get-models(?:\?|$)/.test(req.url)){res.setHeader('content-type','application/json');res.end(JSON.stringify({default_model:'capture',models:[{name:'capture',suggested_prefix_char_count:0,suggested_suffix_char_count:0}]}));return;}
+  if(/^\/settings\//.test(req.url)){res.setHeader('content-type','application/json');res.end('{}');return;}
+  if(/^\/agents\/list-remote-tools/.test(req.url)){res.setHeader('content-type','application/json');res.end(JSON.stringify({tools:[]}));return;}
+  // auggie 的 -p（print）走 /chat，交互/agent 模式走 /chat-stream；两个都要接。
+  if(req.method==='POST'&&/^\/chat(?:-stream)?(?:\?|$)/.test(req.url)){
+   let s='';req.on('data',c=>{s+=c;if(s.length>8*1024*1024)req.destroy();});
+   req.on('end',()=>{let body;try{body=JSON.parse(s);}catch{res.writeHead(400);res.end('{}');return;}
+    const id=++seq;const record={id,at:new Date().toISOString(),url:req.url,protocol:'augment',body};captures.push(record);
+    if(outDir)writeFileSync(join(outDir,`request-${id}.json`),JSON.stringify(record,null,2));
+    const answer=structuredAnswer(body)??'CAPTURE_OK';
+    if(/chat-stream/.test(req.url)){
+     // /chat-stream 只认 SSE 帧（data: {json}），裸 NDJSON 会被静默丢弃。
+     res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-cache'});
+     res.write('data: '+JSON.stringify({text:answer,stop_reason:'end_turn'})+'\n\n');res.end();
+    }else{
+     res.writeHead(200,{'content-type':'application/json'});
+     res.end(JSON.stringify({text:answer,stop_reason:'end_turn'}));
+    }});
+   return;
+  }
   if(req.method!=='POST'||!/(?:\/messages|\/chat\/completions|\/responses|:streamGenerateContent|:generateContent)(?:\?|$)/.test(req.url)){res.writeHead(404);res.end('{}');return;}
   let data='';req.on('data',chunk=>{data+=chunk;if(data.length>8*1024*1024)req.destroy();});
   req.on('end',()=>{let body;try{body=JSON.parse(data);}catch{res.writeHead(400);res.end('{}');return;}
    const id=++seq,protocol=req.url.includes('/messages')?'anthropic':req.url.includes('/responses')?'responses':/:streamGenerateContent|:generateContent/.test(req.url)?'gemini':'chat';
    const record={id,at:new Date().toISOString(),url:req.url,protocol,body};captures.push(record);
-   if(outDir)writeFileSync(join(outDir,`request-${id}.json`),JSON.stringify(record,null,2));response(res,body,protocol,id);
+   if(outDir)writeFileSync(join(outDir,`request-${id}.json`),JSON.stringify(record,null,2));res.__url=req.url;response(res,body,protocol,id);
   });
  });
  server.on('connection',socket=>socket.on('error',()=>{}));

@@ -60,7 +60,7 @@ agent-purge arm pi --slash
 
 Purge capability differs a lot per host, and this project writes the difference down:
 
-- **Full replace**: Codex, OpenCode, DSH, Claude, Gemini CLI, Qwen, Qoder, Kimi, Kiro, CodeBuddy, Grok, omp — the host exposes a full system-prompt entry point.
+- **Full replace**: Codex, OpenCode, DSH, Claude, Qwen, Qoder, Kimi, Kiro, CodeBuddy, Grok, omp — the host exposes a full system-prompt entry point.
 - **Partial**: Claude (a 62-character identity sentence remains), Kilo (`soul()` prepends an identity).
 - **Append only**: Antigravity, Crush, Continue, Auggie, Goose, zcode — no full entry point; the native identity stays in the prompt.
 

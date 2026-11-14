@@ -84,7 +84,7 @@ Homepage: ${homepage}
 Installed-Size: ${Math.ceil(statSync(join(DIST, `agent-purge-${version}-linux-${arch}`)).size / 1024)}
 Description: switch session personas across coding agents
  Replace or append system prompts across pi, omp, OpenCode, Codex, Claude Code,
- dsh, Qwen Code, Gemini CLI, Crush, Kiro and other coding agents, with an
+ dsh, Qwen Code, Crush, Kiro and other coding agents, with an
  always-reversible ledger and a local web console.
 `;
 

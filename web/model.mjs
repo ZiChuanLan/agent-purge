@@ -37,12 +37,12 @@ export const MODE_DESCRIPTIONS = new Proxy({}, {
 const PURGE_NOTES_BY_LOCALE = {
 	en: {
 		append: 'This tool has no full system-prompt entry: the persona is appended, so built-in identity remains.',
-		partial: 'Replacement is active, though the host still prepends its own identity line.',
+		partial: 'Replacement is active, though part of the host prompt survives (its own identity line, or fixed clauses it re-prepends).',
 		unverified: 'System prompt character count has not been measured for this tool yet; no purge claim is made.',
 	},
 	'zh-CN': {
 		append: '这家没有整段 system prompt 入口：人设是追加进去的，内置身份仍在提示词里。',
-		partial: '替换生效，但宿主仍会前置自己的身份句。',
+		partial: '替换生效，但宿主提示词仍有一部分留下（自带身份句，或它每次都会拼回的固定条款）。',
 		unverified: '这家还没有系统提示词字数的实测，不声称已净化。',
 	},
 };
@@ -123,7 +123,6 @@ export const HARNESS_TITLES = {
 	'zcode': 'ZCode',
 	cursor: 'Cursor',
 	devin: 'Devin CLI',
-	gemini: 'Gemini CLI',
 	copilot: 'GitHub Copilot CLI',
 	amp: 'Amp',
 	cline: 'Cline',
@@ -481,7 +480,8 @@ export function sortedHarnesses(state, showAll = false) {
 	const selected = h => (h.armed ?? []).some(c => c !== 'project');
 	return [...(state.harnesses ?? [])]
 		.filter(h => h.caps?.injectable !== false)
-		.filter(h => showAll || selected(h) || h.found || h.homeExists)
+		// planned 的家（kiro / goose）本机没装也要列出来：用户需要知道「未来会支持」。
+		.filter(h => showAll || selected(h) || h.found || h.homeExists || h.planned)
 		.sort((a, b) => Number(selected(b)) - Number(selected(a)) || Number(b.found) - Number(a.found) || a.id.localeCompare(b.id));
 }
 

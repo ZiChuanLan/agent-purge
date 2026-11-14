@@ -123,14 +123,6 @@ export const backends = {
 		residueHint: mode === "off" ? "" : "人设走命令行参数；超长正文可能撞 Windows 命令行上限",
 	}),
 
-	// Gemini CLI：GEMINI_SYSTEM_MD 指向一份 markdown，PromptProvider 直接拿它当 core system prompt。
-	// 只影响本次启动，不写用户配置；append/strict 没有入口。
-	gemini: ({ personaPath, mode, args = [] }) => ({
-		cmd: "gemini",
-		args: [...args],
-		env: mode === "off" ? undefined : { GEMINI_SYSTEM_MD: personaPath },
-		residueHint: mode === "off" ? "" : "人设走临时环境变量，只影响本次启动",
-	}),
 
 	// Crush：人设走全局 CRUSH.md 的托管块（install 通道），命令行只负责启动。
 	crush: ({ args = [] }) => ({ cmd: "crush", args: [...args] }),
@@ -164,12 +156,20 @@ export const backends = {
 		};
 	},
 
-	// Auggie CLI：--rules 追加规则/上下文，不是 core system 替换。
-	auggie: ({ personaPath, mode, args = [] }) => ({
-		cmd: "auggie",
-		args: mode === "off" ? [...args] : ["--rules", personaPath, ...args],
-		residueHint: mode === "off" ? "" : "人设作为规则传入，只影响本次启动",
-	}),
+	// Auggie CLI：--rules 只是把内容追加进 rules[]（实测 identity 仍在）；
+	// 真正整份覆盖走隐藏的 --override-system-prompt（实测把 system_prompt 换成只剩人设）。
+	// replace/strict 用后者，append 用 --rules —— 这才和「这个人设到底有没有顶掉宿主」一致。
+	auggie: ({ personaPath, mode, args = [] }) => {
+		if (mode === "off") return { cmd: "auggie", args: [...args] };
+		const whole = mode === "replace" || mode === "strict";
+		return {
+			cmd: "auggie",
+			args: [whole ? "--override-system-prompt" : "--rules", personaPath, ...args],
+			residueHint: whole
+				? "人设整份替换 system prompt；只影响本次启动"
+				: "人设作为 rules[] 追加，宿主身份仍在（要用 replace 才顶得掉）",
+		};
+	},
 
 	// Goose：--system 追加系统指令，不是整份替换。
 	goose: ({ personaText, mode, args = [] }) => ({
@@ -289,11 +289,6 @@ export const oneshots = {
 		cmd: "qwen",
 		args: ["-p", prompt, ...(mode === "off" ? [] : [mode === "append" ? "--append-system-prompt" : "--system-prompt", inline(personaText)])],
 	}),
-	gemini: ({ prompt, personaPath, mode }) => ({
-		cmd: "gemini",
-		args: ["-p", prompt],
-		env: mode === "off" ? undefined : { GEMINI_SYSTEM_MD: personaPath },
-	}),
 	crush: ({ prompt }) => ({ cmd: "crush", args: ["run", prompt] }),
 	continue: ({ prompt, personaPath, mode }) => ({
 		cmd: "cn",
@@ -314,9 +309,16 @@ export const oneshots = {
 			cleanup: () => { if (undo) { undo(); undo = null; } },
 		};
 	},
+	// 一次性问答也要区分：--rules 只追加，replace/strict 必须用 --override-system-prompt
 	auggie: ({ prompt, personaPath, mode }) => ({
 		cmd: "auggie",
-		args: [...(mode === "off" ? [] : ["--rules", personaPath]), "-p", prompt],
+		args: [
+			...(mode === "off"
+				? []
+				: [mode === "replace" || mode === "strict" ? "--override-system-prompt" : "--rules", personaPath]),
+			"-p",
+			prompt,
+		],
 	}),
 	goose: ({ prompt, personaText, mode }) => ({
 		cmd: "goose",

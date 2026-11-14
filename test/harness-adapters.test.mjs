@@ -393,6 +393,34 @@ try {
 		assert.equal(caps.capsFor("dsh").hot.ok, true, "dsh 被当成不能热切");
 		assert.equal(caps.capsFor("opencode2").hot.ok, true, "opencode2 被当成不能热切");
 	});
+	// 回归：caps 曾经漏了「点名启动」这条通道，于是 launch-arg 型的家四条通道全不命中，
+	// Web 抽屉落到硬编码兜底「这家仅支持项目级规则文件」——把明明在注入的工具说成注入不进去。
+	await t("caps 认得点名启动（launch-arg 型不会掉进项目规则兜底）", async () => {
+		const caps = await import("../lib/caps.mjs");
+		const { readResource } = await import("../lib/root.mjs");
+		const matrix = JSON.parse(readResource("matrix.json").toString("utf8"));
+		const launchArg = Object.entries(matrix.harnesses)
+			.filter(([, h]) => h.class === "launch-arg" && h.inject !== false)
+			.map(([id]) => id);
+		assert.ok(launchArg.length >= 8, `matrix 里 launch-arg 型应有 8 家以上，实际 ${launchArg.length}`);
+		for (const id of launchArg) {
+// 本机没命令时 backend 仍然为真：这条注入实现存在，只是现在用不了
+			const c = caps.capsFor(id, { bin: null });
+			if (id === "zcode") continue; // zcode 只有人工配方，matrix 里是 config-or-hook
+			assert.equal(c.launch.backend, true, `${id}: 后端有注入实现，caps 却说不支持点名启动`);
+			assert.ok(c.launch.how, `${id}: 点名启动必须说清怎么注入`);
+			// 装上 CLI 之后，只要常驻/命令/插件都不命中，launch 必须兜住，否则 UI 只能谎报
+			const installed = caps.capsFor(id, { bin: "/fake/bin/" + id });
+			if (!installed.shim.ok && !installed.install.ok && !installed.slash.ok) {
+				assert.equal(installed.launch.ok, true, `${id}: 装上 CLI 后点名启动该可用`);
+				assert.equal(caps.anyChannel(id, { bin: "/fake/bin/" + id }), true, `${id}: 四条通道都不命中，launch 也没兜住`);
+			}
+		}
+	});
+	await t("没有注入后端才判不可注入（不靠项目规则文件顶替）", async () => {
+		const caps = await import("../lib/caps.mjs");
+		assert.equal(caps.capsFor("zcode").launch.backend, false, "zcode 只有人工配方，不该算点名启动");
+	});
 
 	console.log("\n边界");
 	await t("uninstall 不依赖 persona 还在", () => {

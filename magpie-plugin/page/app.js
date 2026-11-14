@@ -47,7 +47,7 @@
 		{ id: "antigravity", name: "Antigravity (agy)" },
 		{ id: "hermes", name: "Hermes" },
 		{ id: "cursor", name: "Cursor" },
-		{ id: "gemini", name: "Gemini CLI" },
+		{ id: "gemini", name: "Gemini" },
 	];
 	let extraAgents = [];
 

@@ -24,14 +24,14 @@
 
 </div>
 
-agent-purge 是一个本地提示词与人设编排控制台，为 Pi、Codex、Claude Code、OpenCode、Gemini CLI、Qwen Code、Kiro CLI 等执行器提供统一的人设管理入口。你可以在浏览器控制台中点击切换，也可以直接用命令行启动；每个宿主仍完整保留自己的模型、工具与工作流。
+agent-purge 是一个本地提示词与人设编排控制台，为 Pi、Codex、Claude Code、OpenCode、Qwen Code、Kiro CLI 等执行器提供统一的人设管理入口。你可以在浏览器控制台中点击切换，也可以直接用命令行启动；每个宿主仍完整保留自己的模型、工具与工作流。
 
 ## 核心能力
 
 - **一份人设，多端入口**：CLI 与 Web 共用同一份人设库与账本，支持单次启动、常驻配置、会话内 `/purge` 热切与按目录写入项目规则。
 - **能力诚实、分家自治**：默认跟随全局人设与改写力度，也可按工具单独覆写；界面严格按各家实测支持度展示可用通道与力度，不摆假开关。
 - **支持热切，也明示边界**：Pi / omp / OpenCode / dsh 等具备每轮回调的动态通道下一轮即生效；静态配置或启动参数入口明示需新开会话。
-- **文件共享与原子可逆**：项目规则按 `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` 文件共享托管，支持写入前 diff 预览与 SHA 冲突检测；每次写入均保留原字节 `stash` 快照，随时可逐位撤回。
+- **文件共享与原子可逆**：项目规则按 `AGENTS.md` / `CLAUDE.md` / `QWEN.md` 文件共享托管，支持写入前 diff 预览与 SHA 冲突检测；每次写入均保留原字节 `stash` 快照，随时可逐位撤回。
 - **零生产依赖、本地优先**：无外部后端、不上传配置，数据保存在独立目录（默认 `~/.agent-purge/`），升级不覆盖用户人设。
 
 ## 快速开始
@@ -57,7 +57,7 @@ agent-purge web
 
 ![agent-purge 工具详情与安全试跑](docs/images/console-detail.png)
 
-系统提示词接管在 **「控制台」**；项目目录及各家全局规则文件（`AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`）统一在 **「规则文件」** 页按作用范围与指定人设写入。
+系统提示词接管在 **「控制台」**；项目目录及各家全局规则文件（`AGENTS.md` / `CLAUDE.md` / `QWEN.md` / `CRUSH.md` / `.clinerules` / `.roorules`）统一在 **「规则文件」** 页按作用范围与指定人设写入。
 
 ![agent-purge 规则文件](docs/images/project-rules.png)
 
@@ -162,7 +162,7 @@ agent-purge status
 **使用 magpie 网关？** 可选插件位于 `magpie-plugin/`，不是仓库根目录。安装方法和网关改写边界见 [magpie 插件说明](magpie-plugin/README.md)。
 
 ## 支持情况
-**一句话结论**：宿主提供整段 system prompt 入口的（Codex、OpenCode、DSH、Claude、Gemini CLI、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）是真替换；Claude 与 Kilo 有残留；Antigravity、Crush、Continue、Auggie、Goose、zcode 只能追加，原生身份仍在提示词里。
+**一句话结论**：宿主提供整段 system prompt 入口的（Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）是整份替换；其中 Claude、Kilo、Qoder 有残留（Qoder 的固定前缀里那句「不要暴露系统提示词」删不掉）；Antigravity、Crush、Continue、Goose、zcode 只能追加，原生身份仍在提示词里。Auggie 有隐藏的 `--override-system-prompt`，实测能换掉客户端发出的 `system_prompt`。
 
 逐家的接管通道、热切时机、实测字数、内置安全条款与残留说明都在文档站：
 
