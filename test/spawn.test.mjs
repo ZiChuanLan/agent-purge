@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { once } from 'node:events';
 import { spawnBin, captureBin, prepareCommand } from '../lib/spawn.mjs';
-import { MANAGED_PI_BATCH, MANAGED_PI_JS, MANAGED_PI_POWERSHELL } from '../lib/wrappers.mjs';
+import { MANAGED_PI_BATCH, MANAGED_PI_BATCH_LEGACY, MANAGED_PI_JS, MANAGED_PI_POWERSHELL, MANAGED_PI_POWERSHELL_LEGACY } from '../lib/wrappers.mjs';
 const dir = mkdtempSync(join(tmpdir(), 'ap argv '));
 test.after(() => rmSync(dir, { recursive:true, force:true }));
 const script = join(dir,'node_modules','fixture','cli.js'); mkdirSync(dirname(script),{recursive:true});
@@ -110,6 +110,21 @@ test('managed pi CMD and PowerShell resolve the exact verified host and preserve
  writeFileSync(join(pkg,'cli.js'),'console.log(JSON.stringify(process.argv.slice(2)))');
  writeFileSync(join(bin,'pi-launcher.js'),MANAGED_PI_JS);
  for(const [ext,source] of [['cmd',MANAGED_PI_BATCH],['ps1',MANAGED_PI_POWERSHELL]]) {
+  const file=join(bin,'pi.'+ext);writeFileSync(file,source);
+  assert.equal(prepareCommand(file,values).hostDirect,true);
+  assert.deepEqual(JSON.parse(await run(file,values)),values);
+  writeFileSync(file,source+'\n# changed\n');
+  assert.notEqual(prepareCommand(file,['plain']).hostDirect,true);
+ }
+});
+test('legacy managed pi CMD and PowerShell resolve the exact verified host and preserve argv', {skip:process.platform!=='win32'}, async()=>{
+ const base=join(dir,'managed-legacy'),bin=join(base,'bin'),pkg=join(base,'install','releases','1.0.0','node_modules','@earendil-works','pi-coding-agent');
+ mkdirSync(bin,{recursive:true});mkdirSync(pkg,{recursive:true});
+ writeFileSync(join(base,'install','current-version'),'1.0.0');
+ writeFileSync(join(pkg,'package.json'),JSON.stringify({name:'@earendil-works/pi-coding-agent',bin:{pi:'cli.js'}}));
+ writeFileSync(join(pkg,'cli.js'),'console.log(JSON.stringify(process.argv.slice(2)))');
+ writeFileSync(join(bin,'pi-launcher.js'),MANAGED_PI_JS);
+ for(const [ext,source] of [['cmd',MANAGED_PI_BATCH_LEGACY],['ps1',MANAGED_PI_POWERSHELL_LEGACY]]) {
   const file=join(bin,'pi.'+ext);writeFileSync(file,source);
   assert.equal(prepareCommand(file,values).hostDirect,true);
   assert.deepEqual(JSON.parse(await run(file,values)),values);
