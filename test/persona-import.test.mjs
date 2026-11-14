@@ -4,7 +4,8 @@ import "./isolate.mjs";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isolatedEnv } from "../lib/environment.mjs";
 import {
 	parseSource,
@@ -261,11 +262,12 @@ test("GitHub 镜像地址规范化、URL 重写及拉取时隐藏 Token", async 
 
 test("CLI pull --mirror 解析与校验", () => {
 	const root = mkdtempSync(join(tmpdir(), "ap-cli-mirror-"));
+	const cli = fileURLToPath(new URL("../bin/agent-purge.mjs", import.meta.url));
 	try {
 		const env = isolatedEnv(root);
 		const missingVal = spawnSync(
 			process.execPath,
-			[resolve("bin/agent-purge.mjs"), "pull", "--mirror"],
+			[cli, "pull", "--mirror"],
 			{ env, encoding: "utf8" }
 		);
 		assert.notEqual(missingVal.status, 0);
@@ -273,7 +275,7 @@ test("CLI pull --mirror 解析与校验", () => {
 
 		const badScheme = spawnSync(
 			process.execPath,
-			[resolve("bin/agent-purge.mjs"), "pull", "--mirror=ftp://bad.mirror", "ZiChuanLan/some-magic"],
+			[cli, "pull", "--mirror=ftp://bad.mirror", "ZiChuanLan/some-magic"],
 			{ env, encoding: "utf8" }
 		);
 		assert.notEqual(badScheme.status, 0);
