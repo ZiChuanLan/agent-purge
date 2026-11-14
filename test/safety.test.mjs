@@ -71,6 +71,21 @@ test("slash 升级覆盖旧版生成的 agent-purge.ts：卸载时干净删除�
 	assert.equal(existsSync(file), false, "旧版生成扩展不应被当成用户文件还原");
 });
 
+test("用户文件里只是提到「agent-purge 生成的」：仍按外来文件原样还原，不被删除", () => {
+	const ext = join(dir, ".pi", "agent", "extensions");
+	mkdirSync(ext, { recursive: true });
+	const file = join(ext, "agent-purge.ts");
+	// 用户自己写的扩展，注释里恰好引用了这句话；不是 /purge 扩展头，不该被认成我们的
+	const mine = "/**\n * 我抄了 agent-purge 生成的提示词，这里只是说明来源。\n */\nexport default {};\n";
+	writeFileSync(file, mine);
+
+	const r = installSlash("pi", DATA, { personaId: "alpha", personaBody: "PERSONA" });
+	assert.ok(r.file, JSON.stringify(r));
+
+	uninstallSlash("pi", DATA);
+	assert.equal(readFileSync(file, "utf8"), mine, "删除闸门太宽，吃掉了用户自己的文件");
+});
+
 test("file 类目标（opencode2 插件）覆盖用户文件：撤销时还原原字节", () => {
 	const plug = join(dir, ".config", "opencode", "plugins");
 	mkdirSync(plug, { recursive: true });
