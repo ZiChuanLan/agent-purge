@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import "./isolate.mjs";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { isolatedEnv } from "../lib/environment.mjs";
 import {
 	parseSource,
+	normalizeMirror,
+	applyMirror,
 	parsePersonaDoc,
 	sanitizeId,
 	importFromDirectory,
@@ -170,5 +175,110 @@ test("pullFromGitHub 模拟网络返回及 blob 降级解析", async () => {
 	} finally {
 		globalThis.fetch = originalFetch;
 		rmSync(targetRoot, { recursive: true, force: true });
+	}
+});
+
+test("GitHub 镜像地址规范化、URL 重写及拉取时隐藏 Token", async () => {
+	assert.equal(normalizeMirror(""), "");
+	assert.equal(normalizeMirror("gh-proxy.com/"), "https://gh-proxy.com");
+	assert.equal(normalizeMirror("http://127.0.0.1:8080/"), "http://127.0.0.1:8080");
+	assert.throws(() => normalizeMirror("ftp://mirror.invalid"), /http/);
+
+	assert.equal(
+		applyMirror("https://api.github.com/repos/a/b/contents?ref=main", "gh-proxy.com/"),
+		"https://gh-proxy.com/https://api.github.com/repos/a/b/contents?ref=main"
+	);
+	assert.equal(
+		applyMirror("https://raw.githubusercontent.com/a/b/main/x.md", "https://proxy.example/{url}"),
+		"https://proxy.example/https://raw.githubusercontent.com/a/b/main/x.md"
+	);
+
+	const fromMirroredUrl = parseSource("https://gh-proxy.com/https://github.com/ZiChuanLan/some-magic/tree/dev/prompts");
+	assert.equal(fromMirroredUrl.kind, "github");
+	assert.equal(fromMirroredUrl.owner, "ZiChuanLan");
+	assert.equal(fromMirroredUrl.repo, "some-magic");
+	assert.equal(fromMirroredUrl.ref, "dev");
+	assert.equal(fromMirroredUrl.subpath, "prompts");
+	assert.equal(fromMirroredUrl.mirror, "https://gh-proxy.com");
+
+	const targetRoot = mkdtempSync(join(tmpdir(), "ap-gh-mirror-"));
+	const originalFetch = globalThis.fetch;
+	const seen = [];
+	try {
+		globalThis.fetch = async (url, init = {}) => {
+			const u = String(url);
+			seen.push({ url: u, auth: init.headers?.Authorization ?? null });
+			if (u === "https://gh-proxy.com/https://api.github.com/repos/mock-user/mock-repo/contents?ref=main") {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => [
+						{
+							name: "raw-ok.md",
+							type: "file",
+							download_url: "https://raw.githubusercontent.com/mock-user/mock-repo/main/raw-ok.md",
+							git_url: "https://api.github.com/repos/mock-user/mock-repo/git/blobs/111",
+						},
+						{
+							name: "blob-fallback.md",
+							type: "file",
+							download_url: "https://raw.githubusercontent.com/mock-user/mock-repo/main/blob-fallback.md",
+							git_url: "https://api.github.com/repos/mock-user/mock-repo/git/blobs/222",
+						},
+					],
+				};
+			}
+			if (u === "https://gh-proxy.com/https://raw.githubusercontent.com/mock-user/mock-repo/main/raw-ok.md") {
+				return { ok: true, status: 200, text: async () => "---\nid: raw-ok\nname: RawOK\n---\nRAW_BODY" };
+			}
+			if (u === "https://gh-proxy.com/https://api.github.com/repos/mock-user/mock-repo/git/blobs/222") {
+				return {
+					ok: true,
+					status: 200,
+					json: async () => ({ encoding: "base64", content: Buffer.from("---\nid: blob-ok\nname: BlobOK\n---\nBLOB_BODY").toString("base64") }),
+				};
+			}
+			return { ok: false, status: 404, text: async () => "Not Found" };
+		};
+
+		const res = await importPersonas("mock-user/mock-repo", targetRoot, {
+			mirror: "gh-proxy.com/",
+			token: "secret-token-must-not-leak",
+		});
+		assert.equal(res.success, true);
+		assert.equal(res.total, 2);
+		assert.equal(res.source.mirror, "https://gh-proxy.com");
+		assert.equal(seen.every((s) => s.url.startsWith("https://gh-proxy.com/")), true);
+		assert.equal(seen.every((s) => s.auth === null), true, "使用镜像时不得泄露 GitHub Token");
+		const store = createStore(targetRoot);
+		assert.equal(store.read("raw-ok").body.trim(), "RAW_BODY");
+		assert.equal(store.read("blob-ok").body.trim(), "BLOB_BODY");
+	} finally {
+		globalThis.fetch = originalFetch;
+		rmSync(targetRoot, { recursive: true, force: true });
+	}
+});
+
+test("CLI pull --mirror 解析与校验", () => {
+	const root = mkdtempSync(join(tmpdir(), "ap-cli-mirror-"));
+	try {
+		const env = isolatedEnv(root);
+		const missingVal = spawnSync(
+			process.execPath,
+			[resolve("bin/agent-purge.mjs"), "pull", "--mirror"],
+			{ env, encoding: "utf8" }
+		);
+		assert.notEqual(missingVal.status, 0);
+		assert.match(missingVal.stderr, /--mirror/);
+
+		const badScheme = spawnSync(
+			process.execPath,
+			[resolve("bin/agent-purge.mjs"), "pull", "--mirror=ftp://bad.mirror", "ZiChuanLan/some-magic"],
+			{ env, encoding: "utf8" }
+		);
+		assert.notEqual(badScheme.status, 0);
+		assert.match(badScheme.stderr, /http/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
 	}
 });

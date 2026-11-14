@@ -283,15 +283,31 @@ test('issue #1: metadata roundtrip and referenced non-active persona update', as
   await api('harness', { harness: 'pi', persona: 'follow', mode: 'follow' });
 });
 
-test('POST /api/persona/import 端点导入本地目录', async () => {
+test('POST /api/persona/import 端点导入本地目录并支持保存/校验镜像地址', async () => {
+  const html = await (await fetch(url)).text();
+  assert.match(html, /id="import-mirror"/);
+
   const importSrc = mkdtempSync(join(sandbox, 'import-src-'));
   writeFileSync(join(importSrc, 'gamma.md'), '---\nid: gamma\nname: Gamma\n---\nPERSONA_GAMMA');
-  const res = await api('persona/import', { source: importSrc, overwrite: true });
+  const res = await api('persona/import', { source: importSrc, mirror: 'gh-proxy.com/', overwrite: true });
   assert.equal(res.ok, true);
   assert.equal(res.result.total, 1);
   assert.equal(res.result.imported[0].id, 'gamma');
+  assert.equal(res.settings.githubMirror, 'https://gh-proxy.com');
+  assert.equal((await api('state')).settings.githubMirror, 'https://gh-proxy.com');
   assert.ok(res.personas.some(p => p.id === 'gamma'));
   assert.equal(existsSync(join(data, 'personas', 'gamma.md')), true);
+
+  const badMirror = await fetch(`${url}/api/persona/import`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: importSrc, mirror: 'ftp://invalid.mirror' }),
+  });
+  assert.equal(badMirror.status, 400);
+  assert.equal((await api('state')).settings.githubMirror, 'https://gh-proxy.com');
+
+  const cleared = await api('persona/import', { source: importSrc, mirror: '', overwrite: true });
+  assert.equal(cleared.settings.githubMirror, '');
 });
 
 test('POST /api/heartbeat 心跳上报与状态返回', async () => {

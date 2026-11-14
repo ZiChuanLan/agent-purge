@@ -784,7 +784,7 @@ function settingsView(ctx = {}) {
 
 function saveSettingsView(payload, ctx = {}) {
 	if (!plainObject(payload)) throw httpError(400, "设置载荷应为对象");
-	const next = saveSettings(DATA, { language: payload.language, desktop: payload.desktop, webdav: payload.webdav });
+	const next = saveSettings(DATA, { language: payload.language, githubMirror: payload.githubMirror, desktop: payload.desktop, webdav: payload.webdav });
 	// 桌面形态下 exitPolicy 每次现读设置，所以改完立刻生效，不需要重启进程；
 	// 只有终端托管的服务不吃这条设置，如实说明。
 	return {
@@ -891,9 +891,13 @@ async function handleImportPersonas(payload) {
 	const source = String(payload?.source || "").trim();
 	if (!source) throw httpError(400, "导入源不能为空（请提供 GitHub 仓库如 ZiChuanLan/some-magic 或本地目录）");
 	const overwrite = payload?.overwrite !== false;
-	const { importPersonas } = await import("../lib/persona-import.mjs");
+	const hasMirror = plainObject(payload) && Object.hasOwn(payload, "mirror");
+	const { importPersonas, normalizeMirror } = await import("../lib/persona-import.mjs");
+	let mirror = "";
 	try {
-		const result = await importPersonas(source, DATA, { overwrite });
+		mirror = normalizeMirror(hasMirror ? payload.mirror : settingsOf(loadState(DATA).state).githubMirror);
+		if (hasMirror) saveSettings(DATA, { githubMirror: mirror });
+		const result = await importPersonas(source, DATA, { overwrite, mirror });
 		let applied = null;
 		if (payload?.activateId && getStore().read(payload.activateId)) {
 			applied = applyConfiguration(DATA, { persona: payload.activateId });
@@ -903,6 +907,7 @@ async function handleImportPersonas(payload) {
 			result,
 			personas: getStore().list().map((x) => ({ id: x.id, meta: x.meta, body: x.body, chars: x.body.trim().length })),
 			persona: getStore().activeId(),
+			settings: settingsOf(loadState(DATA).state),
 			applied,
 		};
 	} catch (e) {
