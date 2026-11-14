@@ -58,6 +58,19 @@ test("slash 覆盖用户已有的同名扩展：撤销时按原字节还原，�
 	assert.equal(readFileSync(file, "utf8"), mine, "用户原有的扩展被吃掉了");
 });
 
+test("slash 升级覆盖旧版生成的 agent-purge.ts：卸载时干净删除而不还原旧版", () => {
+	const ext = join(dir, ".pi", "agent", "extensions");
+	mkdirSync(ext, { recursive: true });
+	const file = join(ext, "agent-purge.ts");
+	writeFileSync(file, "/**\n * agent-purge 生成的 /purge 扩展（删除本文件即取消）。\n */\nexport default {};\n");
+
+	const r = installSlash("pi", DATA, { personaId: "alpha", personaBody: "PERSONA" });
+	assert.ok(r.file, JSON.stringify(r));
+
+	uninstallSlash("pi", DATA);
+	assert.equal(existsSync(file), false, "旧版生成扩展不应被当成用户文件还原");
+});
+
 test("file 类目标（opencode2 插件）覆盖用户文件：撤销时还原原字节", () => {
 	const plug = join(dir, ".config", "opencode", "plugins");
 	mkdirSync(plug, { recursive: true });
