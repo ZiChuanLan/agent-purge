@@ -67,6 +67,25 @@ test('settings: 空密码等于清除；地址与目录做基本校验；GitHub 
 	assert.throws(() => saveSettings(home, { githubMirror: 'ftp://mirror.invalid' }), /http/);
 });
 
+test('settings: theme 默认 auto，支持切换并校验 light/dark/auto', () => {
+	const home = freshHome('theme');
+	assert.equal(settingsOf(loadState(home).state).theme, 'auto');
+	assert.equal(settingsOf({ settings: { theme: 'unexpected' } }).theme, 'auto');
+
+	saveSettings(home, { theme: ' DARK ' });
+	assert.equal(settingsOf(loadState(home).state).theme, 'dark');
+	saveSettings(home, { desktop: { exitOnClose: false } });
+	assert.equal(settingsOf(loadState(home).state).theme, 'dark', '保存其他设置项不能抹掉 theme');
+
+	saveSettings(home, { theme: 'light' });
+	assert.equal(settingsOf(loadState(home).state).theme, 'light');
+	saveSettings(home, { theme: 'auto' });
+	assert.equal(settingsOf(loadState(home).state).theme, 'auto');
+
+	assert.throws(() => saveSettings(home, { theme: 'sepia' }), /auto.*light.*dark/);
+	assert.throws(() => saveSettings(home, { theme: 123 }), /字符串/);
+});
+
 /* ── WebDAV：用一个最小 WebDAV 服务端打真请求 ────────────────────────────── */
 
 /** 严格 WebDAV 桩：要求先逐层 MKCOL 建目录才允许 PUT，目录不在时 PROPFIND 返回 404（贴近真实服务端）。 */

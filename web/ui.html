@@ -1,13 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <meta name="ap-locale" content="">
+<meta name="ap-theme" content="">
 <meta name="ap-server-gen" content="">
 <title>agent-purge · Prompt Console</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cpath d='M13.5 6.5 4 16l9.5 9.5 4.8-4.8L13.6 16l4.7-4.7-4.8-4.8Z' fill='%230F172A'/%3E%3Cpath d='M20.5 10.8 25.7 16l-5.2 5.2L15.3 16l5.2-5.2Z' fill='%232563EB'/%3E%3Cpath d='M21.8 5.2 28.4 11.8l-2.3 2.3-6.6-6.6 2.3-2.3Z' fill='%2394A3B8'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none'%3E%3Cstyle%3E.s%7Bfill:%230F172A%7D.c%7Bfill:%232563EB%7D.p%7Bfill:%2394A3B8%7D@media(prefers-color-scheme:dark)%7B.s%7Bfill:%23F8FAFC%7D.c%7Bfill:%233B82F6%7D.p%7Bfill:%2364748B%7D%7D%3C/style%3E%3Cpath class='s' d='M13.5 6.5 4 16l9.5 9.5 4.8-4.8L13.6 16l4.7-4.7-4.8-4.8Z'/%3E%3Cpath class='c' d='M20.5 10.8 25.7 16l-5.2 5.2L15.3 16l5.2-5.2Z'/%3E%3Cpath class='p' d='M21.8 5.2 28.4 11.8l-2.3 2.3-6.6-6.6 2.3-2.3Z'/%3E%3C/svg%3E">
 <meta name="theme-color" content="#F7F8FA">
 <link rel="stylesheet" href="/styles.css">
 <script type="module" src="/app.js"></script>
@@ -38,6 +39,9 @@
       <div class="topbar-right">
         <span id="connection" class="conn"><span class="conn-dot" aria-hidden="true"></span><span id="connection-text" data-i18n="conn.connecting">Connecting to local service</span></span>
         <button type="button" id="version-badge" class="version" title="Check for updates" data-i18n="version.loading" data-i18n-attr="title:version.checkTitle">Loading…</button>
+        <button type="button" id="theme-toggle" class="icon-btn" title="Switch to dark mode" aria-label="Switch to dark mode" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        </button>
         <button type="button" id="refresh" class="icon-btn" title="Refresh status" aria-label="Refresh status" data-i18n-attr="title:refresh.title,aria-label:refresh.title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
         </button>
@@ -328,7 +332,7 @@
         <div class="page-heading">
           <div>
             <h1 id="settings-title" data-i18n="settings.title">Settings</h1>
-            <p data-i18n="settings.subtitle">Interface language, desktop window behavior, and WebDAV backup. Everything is stored locally.</p>
+            <p data-i18n="settings.subtitle">Interface language, appearance, desktop window behavior, and WebDAV backup. Everything is stored locally.</p>
           </div>
         </div>
 
@@ -352,6 +356,29 @@
           <div class="settings-actions">
             <button id="save-language" class="btn btn-primary" type="button" data-i18n="settings.saveLanguage">Save Language</button>
             <span id="language-status" class="hint"></span>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="theme-settings-title">
+          <div class="panel-head">
+            <div>
+              <h2 id="theme-settings-title" data-i18n="settings.themeTitle">Appearance</h2>
+              <p class="hint" data-i18n="settings.themeDesc">Auto follows your system light or dark preference; you can also toggle anytime from the top bar.</p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="theme-select" data-i18n="settings.themeLabel">Theme</label>
+              <select id="theme-select" class="select">
+                <option value="auto" data-i18n="settings.themeAuto">Auto (Follow System)</option>
+                <option value="light" data-i18n="settings.themeLight">Light</option>
+                <option value="dark" data-i18n="settings.themeDark">Dark</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-actions">
+            <button id="save-theme" class="btn btn-primary" type="button" data-i18n="settings.saveTheme">Save Theme</button>
+            <span id="theme-status" class="hint"></span>
           </div>
         </section>
 

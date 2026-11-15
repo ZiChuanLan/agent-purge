@@ -6,11 +6,11 @@ applyDomI18n();
 const $ = id => document.getElementById(id);
 // 数据只进入文本节点或固定属性，不解析来自人设/报告的 HTML。
 function node(tag, attrs = {}, ...children) {
-  const el = ['svg', 'path'].includes(tag) ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
+  const el = ['svg', 'path', 'circle'].includes(tag) ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
     if (value === null || value === undefined || value === false) continue;
     if (key === 'class') {
-      if (['svg', 'path'].includes(tag)) el.setAttribute('class', String(value));
+      if (['svg', 'path', 'circle'].includes(tag)) el.setAttribute('class', String(value));
       else el.className = value;
     }
     else if (key === 'checked' || key === 'hidden' || key === 'disabled') el[key] = Boolean(value);
@@ -21,6 +21,43 @@ function node(tag, attrs = {}, ...children) {
   }
   return el;
 }
+
+const themeMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+const normalizeTheme = value => (value === 'light' || value === 'dark' ? value : 'auto');
+function resolvedTheme(setting = document.documentElement.dataset.theme || state?.settings?.theme || 'auto') {
+  const mode = normalizeTheme(setting);
+  if (mode === 'dark' || mode === 'light') return mode;
+  return themeMedia?.matches ? 'dark' : 'light';
+}
+function updateThemeToggle() {
+  const btn = $('theme-toggle');
+  if (!btn) return;
+  const isDark = resolvedTheme() === 'dark';
+  const label = isDark ? t('theme.toLight') : t('theme.toDark');
+  btn.setAttribute('title', label);
+  btn.setAttribute('aria-label', label);
+  btn.setAttribute('aria-pressed', String(isDark));
+  const svg = isDark
+    ? node('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' },
+        node('circle', { cx: '12', cy: '12', r: '4' }),
+        node('path', { d: 'M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41' }))
+    : node('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' },
+        node('path', { d: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z' }));
+  btn.replaceChildren(svg);
+}
+function applyTheme(setting) {
+  const mode = normalizeTheme(setting);
+  document.documentElement.dataset.theme = mode;
+  const actual = resolvedTheme(mode);
+  document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', mode === 'auto' ? 'light dark' : actual);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', actual === 'dark' ? '#0B0F14' : '#F7F8FA');
+  document.querySelector('meta[name="ap-theme"]')?.setAttribute('content', mode);
+  updateThemeToggle();
+}
+applyTheme(document.documentElement.dataset.theme || document.querySelector('meta[name="ap-theme"]')?.getAttribute('content') || 'auto');
+themeMedia?.addEventListener?.('change', () => {
+  if (normalizeTheme(state?.settings?.theme || document.documentElement.dataset.theme) === 'auto') applyTheme('auto');
+});
 
 const chip = (label, kind = '', title = null) => node('span', { class: `chip ${kind}`, title }, label);
 const fmt = n => fmtNumber(n);
@@ -180,6 +217,7 @@ async function refresh({ resetDraft = false } = {}) {
     setLocale(fresh.locale);
     applyDomI18n();
   }
+  applyTheme(fresh.settings?.theme || 'auto');
   base = configurationOf(state);
   if (!preserve) draft = { ...base };
   setConnection(t('conn.connected', { time: fmtTime(Date.now()) }), 'is-live');
@@ -231,6 +269,7 @@ function render() {
   $('diagnostic-state').textContent = JSON.stringify({ active: state.active, mode: state.defaults.mode, armed: state.armed, pausedInstalls: state.pausedInstalls, reconciled: state.reconciled, revision: state.lastApply?.revision, runtimeConfirmed: state.lastApply?.runtimeConfirmed }, null, 2);
 
   $('version-badge').textContent = `v${state.version || pick('未知', 'unknown')}`;
+  updateThemeToggle();
   renderConfigControls(); renderHarnesses(); renderPersonas(); renderReport(); renderSettings();
   renderEditorStatus(); lockControls();
 }
@@ -1157,6 +1196,7 @@ function renderSettings() {
   const s = state?.settings;
   if (!s) return;
   if ($('language-select')) $('language-select').value = s.language || 'auto';
+  if ($('theme-select')) $('theme-select').value = s.theme || 'auto';
   const desktop = s.desktop || {};
   const webdav = s.webdav || {};
   $('close-action').value = desktop.exitOnClose === false ? 'stay' : 'exit';
@@ -1197,6 +1237,41 @@ $('save-language')?.addEventListener('click', () => operation(async () => {
   settingsStatus('language-status', t('settings.languageSaved'), 'good');
   notify(t('settings.languageSaved'), 'good');
 }));
+
+$('save-theme')?.addEventListener('click', () => operation(async () => {
+  themeSeq += 1;
+  const result = await api('settings', { theme: $('theme-select').value });
+  state.settings = result.settings;
+  applyTheme(result.settings.theme);
+  renderSettings();
+  settingsStatus('theme-status', t('settings.themeSaved'), 'good');
+  notify(t('settings.themeSaved'), 'good');
+}));
+
+let themeSeq = 0;
+$('theme-toggle')?.addEventListener('click', async () => {
+  if (busy) return;
+  const seq = ++themeSeq;
+  const prev = normalizeTheme(state?.settings?.theme || document.documentElement.dataset.theme);
+  const next = resolvedTheme(prev) === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  if (state?.settings) state.settings.theme = next;
+  if ($('theme-select')) $('theme-select').value = next;
+  try {
+    const result = await api('settings', { theme: next });
+    if (seq !== themeSeq) return;
+    if (state) state.settings = result.settings;
+    applyTheme(result.settings.theme);
+    if ($('theme-select')) $('theme-select').value = result.settings.theme;
+    settingsStatus('theme-status', '');
+  } catch (error) {
+    if (seq !== themeSeq) return;
+    if (state?.settings) state.settings.theme = prev;
+    applyTheme(prev);
+    if ($('theme-select')) $('theme-select').value = prev;
+    notify(error.message, 'error');
+  }
+});
 
 $('save-desktop')?.addEventListener('click', () => operation(async () => {
   const result = await api('settings', {

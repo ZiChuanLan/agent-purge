@@ -89,6 +89,29 @@ test('settings API: 桌面端偏好 + WebDAV 账号，密码只报 hasPassword',
   const initial = await api('settings');
   assert.equal(initial.settings.desktop.exitOnClose, true);
   assert.equal(initial.settings.desktop.confirmOnClose, true);
+  assert.equal(initial.settings.theme, 'auto');
+
+  const dark = await api('settings', { theme: 'dark' });
+  assert.equal(dark.settings.theme, 'dark');
+  const darkHtml = await (await fetch(url)).text();
+  assert.match(darkHtml, /<html[^>]*data-theme="dark"/);
+  assert.match(darkHtml, /<meta name="color-scheme" content="dark">/);
+  assert.match(darkHtml, /<meta name="ap-theme" content="dark">/);
+  assert.match(darkHtml, /<meta name="theme-color" content="#0B0F14">/);
+  assert.match(darkHtml, /id="theme-toggle"/);
+  assert.match(darkHtml, /id="theme-select"/);
+
+  const light = await api('settings', { theme: 'light' });
+  assert.equal(light.settings.theme, 'light');
+  const lightHtml = await (await fetch(url)).text();
+  assert.match(lightHtml, /<html[^>]*data-theme="light"/);
+  assert.match(lightHtml, /<meta name="color-scheme" content="light">/);
+  assert.match(lightHtml, /<meta name="theme-color" content="#F7F8FA">/);
+
+  await api('settings', { theme: 'auto' });
+  const autoHtml = await (await fetch(url)).text();
+  assert.match(autoHtml, /<html[^>]*data-theme="auto"/);
+  assert.match(autoHtml, /<meta name="color-scheme" content="light dark">/);
 
   const saved = await api('settings', {
     desktop: { exitOnClose: false, confirmOnClose: false },
@@ -261,6 +284,7 @@ test('invalid API payloads preserve configuration and foreign Host is blocked', 
     ['power', ''], ['arm', '{"harness":"pi","action":"typo"}'], ['arm', '{"harness":"pi","channel":"typo","action":"on"}'],
     ['harness', '{"harness":"pi","mode":"typo"}'], ['harness', '{"harness":"pi"}'],
     ['apply', '{"mode":"typo"}'], ['apply', '{"harness":"../pi"}'], ['persona', '{"id":"../x","body":"x"}'],
+    ['settings', '{"theme":"neon"}'], ['settings', '{"theme":123}'],
   ];
   for (const [path, raw] of invalid) {
     const response = await fetch(`${url}/api/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: raw });
@@ -464,4 +488,44 @@ test('serveWeb: custom onError intercepts EADDRINUSE without immediate exit (iss
   assert.ok('version' in state || 'personas' in state);
 
   await new Promise(resolve => first.close(resolve));
+});
+
+test('dark mode CSS tokens & i18n keys stay in sync and pass WCAG AA contrast', async () => {
+  const css = readFileSync(resolve('web/styles.css'), 'utf8');
+  const extractVars = block => Object.fromEntries([...block.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;]+);/gi)].map(m => [m[1], m[2].trim()]));
+  const explicitMatch = css.match(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/);
+  const autoMatch = css.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{([\s\S]*?)\n\s*\}\s*\}/);
+  assert.ok(explicitMatch, 'dark mode explicit selector block must exist');
+  assert.ok(autoMatch, 'dark mode prefers-color-scheme block must exist');
+  const explicitVars = extractVars(explicitMatch[1]);
+  const autoVars = extractVars(autoMatch[1]);
+  assert.deepEqual(Object.keys(explicitVars).sort(), Object.keys(autoVars).sort(), 'explicit and auto dark theme variables must stay identical');
+  for (const key of Object.keys(explicitVars)) {
+    assert.equal(explicitVars[key], autoVars[key], `dark theme token ${key} drifted between explicit and auto blocks`);
+  }
+
+  const lum = hex => {
+    const [r, g, b] = hex.replace('#', '').match(/../g).map(x => parseInt(x, 16) / 255).map(c => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a, b) => { const la = lum(a), lb = lum(b); return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05); };
+  for (const [fg, bg, label] of [
+    [explicitVars['--ink'], explicitVars['--surface'], 'ink/surface'],
+    [explicitVars['--ink-2'], explicitVars['--surface-2'], 'ink-2/surface-2'],
+    [explicitVars['--muted'], explicitVars['--surface-2'], 'muted/surface-2'],
+    [explicitVars['--faint'], explicitVars['--surface-2'], 'faint/surface-2'],
+    [explicitVars['--accent'], explicitVars['--accent-soft'], 'accent/accent-soft'],
+    [explicitVars['--good'], explicitVars['--good-soft'], 'good/good-soft'],
+    [explicitVars['--warn'], explicitVars['--warn-soft'], 'warn/warn-soft'],
+    [explicitVars['--bad'], explicitVars['--bad-soft'], 'bad/bad-soft'],
+    ['#ffffff', explicitVars['--accent-solid'], 'white/accent-solid'],
+  ]) {
+    assert.ok(contrast(fg, bg) >= 4.5, `${label} contrast ${contrast(fg, bg).toFixed(2)} < 4.5`);
+  }
+
+  const { MESSAGES } = await import('../web/i18n.mjs');
+  assert.deepEqual(Object.keys(MESSAGES.en).sort(), Object.keys(MESSAGES['zh-CN']).sort(), 'en and zh-CN i18n keys must match');
+  for (const key of ['theme.toDark', 'theme.toLight', 'settings.themeTitle', 'settings.themeLabel', 'settings.themeAuto', 'settings.themeLight', 'settings.themeDark', 'settings.saveTheme', 'settings.themeSaved']) {
+    assert.ok(MESSAGES.en[key] && MESSAGES['zh-CN'][key], `missing i18n key ${key}`);
+  }
 });
