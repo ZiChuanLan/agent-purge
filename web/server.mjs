@@ -797,7 +797,7 @@ function settingsView(ctx = {}) {
 
 function saveSettingsView(payload, ctx = {}) {
 	if (!plainObject(payload)) throw httpError(400, "设置载荷应为对象");
-	const next = saveSettings(DATA, { language: payload.language, githubMirror: payload.githubMirror, desktop: payload.desktop, webdav: payload.webdav });
+	const next = saveSettings(DATA, { language: payload.language, theme: payload.theme, githubMirror: payload.githubMirror, desktop: payload.desktop, webdav: payload.webdav });
 	// 桌面形态下 exitPolicy 每次现读设置，所以改完立刻生效，不需要重启进程；
 	// 只有终端托管的服务不吃这条设置，如实说明。
 	return {
@@ -1017,10 +1017,20 @@ const html = (res, ctx = {}) => {
 	// 每次发页面都换一个代号：/api/leave 只认自己那一代，旧页面的 beacon 晚到也不会误伤新页面
 	const gen = String((ctx.gen = (ctx.gen ?? 0) + 1));
 	let locale = "en";
-	try { locale = resolveLocale({ setting: settingsOf(loadState(DATA).state).language }); } catch {}
+	let theme = "auto";
+	try {
+		const s = settingsOf(loadState(DATA).state);
+		locale = resolveLocale({ setting: s.language });
+		theme = s.theme;
+	} catch {}
+	const colorScheme = theme === "dark" ? "dark" : theme === "light" ? "light" : "light dark";
+	const themeColor = theme === "dark" ? "#0B0F14" : "#F7F8FA";
 	const page = readResource("web/ui.html").toString("utf8")
-		.replace(/<html lang="[^"]*">/, `<html lang="${locale}">`)
+		.replace(/<html lang="[^"]*"[^>]*>/, `<html lang="${locale}" data-theme="${theme}">`)
+		.replace('<meta name="color-scheme" content="light dark">', `<meta name="color-scheme" content="${colorScheme}">`)
 		.replace('<meta name="ap-locale" content="">', `<meta name="ap-locale" content="${locale}">`)
+		.replace('<meta name="ap-theme" content="">', `<meta name="ap-theme" content="${theme}">`)
+		.replace('<meta name="theme-color" content="#F7F8FA">', `<meta name="theme-color" content="${themeColor}">`)
 		.replace('<meta name="ap-server-gen" content="">', `<meta name="ap-server-gen" content="${gen}">`);
 	return res
 		.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" })
