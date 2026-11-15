@@ -22,6 +22,10 @@ function node(tag, attrs = {}, ...children) {
   return el;
 }
 
+// 声明放在主题代码之前：resolvedTheme() 的默认参数会读 state，先声明就不会有人以后在 applyTheme
+// 之前调用它时踩到 TDZ（当前 applyTheme 会先写 data-theme，默认参数短路，暂时读不到 state）
+let state, base, draft, editor = null, editorBaseline = '', busy = false, activePage = 'console', expanded = null;
+let capture = null, draftConflict = false, project = null;
 const themeMedia = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 const normalizeTheme = value => (value === 'light' || value === 'dark' ? value : 'auto');
 function resolvedTheme(setting = document.documentElement.dataset.theme || state?.settings?.theme || 'auto') {
@@ -86,8 +90,6 @@ const harnessIcon = (id, size = 22) => {
   return node('img', { class: `tool-icon${big}`, src: `assets/${file}?v=2`, alt: '', width: String(size), height: String(size) });
 };
 
-let state, base, draft, editor = null, editorBaseline = '', busy = false, activePage = 'console', expanded = null;
-let capture = null, draftConflict = false, project = null;
 
 const CHANNELS = ['install', 'slash', 'shim', 'project'];
 const installSourceLabel = src => ({
