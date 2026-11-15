@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installPlugin, probePlugin, pluginDir, uninstallPlugin } from "../lib/pi-desktop.mjs";
+import { extensionSource } from "../lib/extension.mjs";
 
 // PI-Desktop 的扩展只能由插件贡献：这里验「装进 registry + 文件齐全」和「卸干净」。
 function sandbox(t) {
@@ -67,4 +68,46 @@ test("pi-desktop: 没有 registry 时明确报错，不静默装一半", (t) => 
 	rmSync(join(data, "plugins", "registry.json"), { force: true });
 	const r = installPlugin("C:/ap-home");
 	assert.match(r.error ?? "", /registry|插件登记表/);
+});
+
+// PI-Desktop 0.21 把 before_agent_start 的返回值按「会话中途 system 补丁」下发：不认补丁的模型
+// （实测 mercury-3）看不到变化，认补丁的（deepseek-v4.1-flash）能换。生成代码必须同时写
+// systemPromptOptions.forceSystemPrompt，走整份替换，才对所有模型生效。
+test("pi-desktop: 生成的扩展把新提示词同时写进 forceSystemPrompt（含 off 撤销）", async (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-pidesk-ext-"));
+	const root = join(dir, "ap");
+	mkdirSync(join(root, "personas"), { recursive: true });
+	writeFileSync(join(root, "personas", "alpha.md"), "---\nid: alpha\n---\nALPHA PERSONA\n", "utf8");
+	const state = (on) =>
+		writeFileSync(
+			join(root, "state.json"),
+			JSON.stringify({
+				v: 1,
+				persona: "alpha",
+				default: { harness: "pi-desktop", mode: "replace" },
+				armed: on ? { "pi-desktop": ["slash"] } : {},
+				"pi-desktopAuto": true,
+				piAuto: false,
+				ompAuto: false,
+			}) + "\n",
+			"utf8",
+		);
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+	const source = extensionSource(root, "pi-desktop");
+	assert.match(source, /forceSystemPrompt = finalPrompt/, "生成代码里没有 forceSystemPrompt");
+	const plugin = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
+	const hooks = {};
+	plugin.default({ on: (k, v) => (hooks[k] = v), registerCommand: () => {} });
+
+	state(true);
+	const event = { systemPrompt: "HOST PROMPT", systemPromptOptions: {} };
+	const out = await hooks.before_agent_start(event);
+	assert.match(String(out.systemPrompt), /ALPHA PERSONA/);
+	assert.equal(event.systemPromptOptions.forceSystemPrompt, out.systemPrompt, "forceSystemPrompt 与返回的 prompt 不一致");
+
+	state(false);
+	const offEvent = { systemPrompt: "HOST PROMPT", systemPromptOptions: { forceSystemPrompt: "STALE" } };
+	await hooks.before_agent_start(offEvent);
+	assert.equal("forceSystemPrompt" in offEvent.systemPromptOptions, false, "off 后必须撤掉 forceSystemPrompt");
 });

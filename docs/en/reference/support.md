@@ -63,7 +63,7 @@ Counting rule: one line = one independent guardrail directive. Strong signals on
 | Crush | v0.101.0 | `CRUSH.md` / AGENTS.md | New session | Append | 22,180 → 22,180 |
 | zcode | 3.16.3 | Config / hook | New session | Append | 9,359 → 9,359 |
 | WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | `app-config.json` | New session | Unverified | not measured |
-| pi-desktop | 0.21.0 | `SYSTEM.md` / plugin | Yes (next turn) | Unverified | not measured |
+| pi-desktop | 0.21.0 | `SYSTEM.md` / plugin | Yes (new session; mid-session depends on the model) | Unverified | not measured |
 ### How these numbers were produced
 
 `bench/capture-system.mjs` runs four modes per harness, and every mode is a **real request**:

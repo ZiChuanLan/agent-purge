@@ -32,7 +32,7 @@ agent-purge codex -- --help          # -- 后的参数交给宿主
 
 ## 生效时机为什么不同
 
-- **会话内热切**（`command` / `state`）：进程每轮重拼 system。Pi、pi-desktop、omp 靠 `before_agent_start` 钩子，OpenCode / dsh 靠插件每轮读状态。改设置下一轮就生效。
+- **会话内热切**（`command` / `state`）：进程每轮重拼 system。Pi、pi-desktop、omp 靠 `before_agent_start` 钩子，OpenCode / dsh 靠插件每轮读状态。改设置下一轮就生效（pi-desktop 例外：替换以会话中途 system 补丁下发，模型不接受补丁时同会话看不到变化）。
 - **需新会话**：`system` 只在启动时拼一次。Claude、Codex、Grok、Kiro、Antigravity 等都属这类，改完必须重开会话。
 
 逐家的热切能力见[支持情况](/reference/support)。

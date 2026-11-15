@@ -64,7 +64,7 @@
 | Crush | v0.101.0 | 全局规则 (`CRUSH.md`) / AGENTS.md | 需新会话 | 追加 | 22,180 → 22,180 |
 | zcode | 3.16.3 | 配置 / Hook | 需新会话 | 追加 | 9,359 → 9,359 |
 | WorkBuddy / WorkBuddy AI | 5.9.3 / 5.9.4 | 配置文件写入 (`app-config.json`) | 需新会话 | 未测字数 | 未测字数 |
-| pi-desktop | 0.21.0 | 持续配置 (`SYSTEM.md`) / 插件 | 支持（次轮生效） | 未测字数 | 未测字数 |
+| pi-desktop | 0.21.0 | 持续配置 (`SYSTEM.md`) / 插件 | 支持（新会话必生效；同会话看模型） | 未测字数 | 未测字数 |
 ### 这些数字是怎么来的
 
 `bench/capture-system.mjs` 对每家宿主跑四个模式，每个模式都是一次**真实请求**：
