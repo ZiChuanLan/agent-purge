@@ -161,3 +161,29 @@ test("detect: PI-Desktop 只看自己的数据根，不把 pi CLI 当成 PI-Desk
 	assert.equal(detect()["pi-desktop"].found, true);
 	assert.equal(detect()["pi-desktop"].home, join(home, ".pi-desktop"));
 });
+
+test("detect: CLI 卸了只剩配置目录时 residueOnly=true（不能再算装上）", (t) => {
+	const home = sandbox(t);
+	mkdirSync(join(home, ".grok"), { recursive: true });
+	writeFileSync(join(home, ".grok", "config.toml"), "", "utf8");
+
+	const grok = detect().grok;
+	assert.equal(grok.found, true, "配置目录还在，found 仍是 true");
+	assert.equal(grok.residueOnly, true, "没有命令也没有安装目录，只剩残留");
+});
+
+test("detect: 命令在就不是残留", (t) => {
+	const home = sandbox(t);
+	const bin = join(home, ".opencode", "bin", process.platform === "win32" ? "opencode.exe" : "opencode");
+	mkdirSync(join(home, ".opencode", "bin"), { recursive: true });
+	writeFileSync(bin, "", "utf8");
+
+	assert.equal(detect().opencode.residueOnly, false);
+});
+
+test("detect: 什么都没装的家既不是装上也不是残留", (t) => {
+	sandbox(t);
+	const crush = detect().crush;
+	assert.equal(crush.found, false);
+	assert.equal(crush.residueOnly, false);
+});

@@ -172,3 +172,25 @@ function ansiCodePage() {
 		return "";
 	}
 }
+
+test("locate: macOS 的 /Applications/<名字>.app 就是装了（不再只剩配置目录一条判据）", (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-app-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	const bundle = join(dir, "PI-Desktop.app");
+	mkdirSync(join(bundle, "Contents", "MacOS"), { recursive: true });
+	writeFileSync(join(bundle, "Contents", "MacOS", "PI-Desktop"), "", "utf8");
+
+	const hit = locate({ names: ["PI-Desktop"], exe: ["PI-Desktop.exe"], folder: ["PI-Desktop"] }, sources({ appDirs: [dir] }));
+	assert.equal(hit.dir, bundle);
+	assert.equal(hit.exe, join(bundle, "Contents", "MacOS", "PI-Desktop"));
+	assert.equal(hit.source, "app");
+});
+
+test("locate: .app 名字必须精确相等，Antigravity Tools.app 不冒充 Antigravity", (t) => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-app2-"));
+	t.after(() => rmSync(dir, { recursive: true, force: true }));
+	mkdirSync(join(dir, "Antigravity Tools.app", "Contents", "MacOS"), { recursive: true });
+
+	const hit = locate({ names: ["Antigravity"], exe: ["Antigravity.exe"], folder: ["antigravity"] }, sources({ appDirs: [dir] }));
+	assert.equal(hit, null);
+});

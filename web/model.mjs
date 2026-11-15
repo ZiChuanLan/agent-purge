@@ -476,6 +476,13 @@ export function configurationOf(state) {
 }
 export const changed = (draft, base) => JSON.stringify(draft) !== JSON.stringify(base);
 export const needsApply = (state, draft, base) => state.defaultsSet === false || changed(draft, base);
+/** 「装没装」只看程序本体：命令、安装目录（含 macOS 的 .app），或配置根在且不是「只剩残留」。
+ *  只有配置目录（CLI 卸载后留下的 config.toml、别的工具写进去的 skills）不算装上——
+ *  否则未安装的家会被画成「可接管」，开关点开也写不进任何地方。 */
+export const installedOf = harness => Boolean(harness?.bin || harness?.install || ((harness?.found || harness?.homeExists) && !harness?.residueOnly));
+
+/** 这家被单独关掉（不是全局暂停）：界面要把「已关闭」和「可接管」分开画。 */
+export const disabledOf = harness => ['harness-disabled', 'harness-off'].includes(harness?.activation?.blockedBy);
 export function sortedHarnesses(state, showAll = false) {
 	const selected = h => (h.armed ?? []).some(c => c !== 'project');
 	return [...(state.harnesses ?? [])]

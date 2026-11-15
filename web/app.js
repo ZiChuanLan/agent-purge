@@ -1,4 +1,4 @@
-import { MODE_LABELS, MODE_DESCRIPTIONS, CHANNEL_LABELS, CAPTURE_LABELS, personaName, configurationOf, changed, needsApply, sortedHarnesses, effectLabel as effectLabelFor, harnessTitle, HARNESS_PURGE_EFFECTS, modeAvailability, unsupportedHarnesses, modeLabels, modeDescriptions, channelLabels, captureLabels, harnessPurgeEffects } from './model.mjs';
+import { MODE_LABELS, MODE_DESCRIPTIONS, CHANNEL_LABELS, CAPTURE_LABELS, personaName, configurationOf, changed, needsApply, sortedHarnesses, installedOf as installed, disabledOf as disabledHere, effectLabel as effectLabelFor, harnessTitle, HARNESS_PURGE_EFFECTS, modeAvailability, unsupportedHarnesses, modeLabels, modeDescriptions, channelLabels, captureLabels, harnessPurgeEffects } from './model.mjs';
 import { applyDomI18n, fmtDateTime, fmtNumber, fmtTime, getLocale, isZh, listJoin, pick, setLocale, t } from './i18n.mjs';
 import { verificationEvidence } from './evidence.mjs';
 applyDomI18n();
@@ -279,7 +279,6 @@ function scopeLine() {
 function toolStatus(h) {
   const on = consoleOn(h);
   const failed = state.lastApply?.results?.some(r => r.harness === h.id && r.status === 'failed');
-  const installed = Boolean(h.found || h.homeExists);
   if (on && failed) return { key: 'failed', label: pick('需重试', 'Retry needed') };
   if (on && state.paused) return { key: 'paused', label: pick('已暂停', 'Paused') };
   if (on && h.mode === 'off') return { key: 'paused', label: pick('单独暂停', 'Tool paused') };
@@ -287,7 +286,11 @@ function toolStatus(h) {
   // 未来支持：还没确定能不能接管的家（matrix 里 planned = true）不画成「可接管」，
   // 也不画成「未安装 / 缺命令行」——那是本机环境状态，不是能力状态。
   if (h.planned) return { key: 'future', label: pick('未来支持', 'Planned') };
-  if (!installed) return { key: 'missing', label: pick('未安装', 'Not installed') };
+  // 只剩残留配置（CLI 早卸了）不算装上；真装了但缺命令行的家下面还有专门一档。
+  if (!installed(h)) return { key: 'missing', label: h.residueOnly ? pick('残留配置', 'Leftovers only') : pick('未安装', 'Not installed') };
+  // 这家被单独关掉时注入不生效（resolveActivation 直接 stop('harness-disabled')），
+  // 开关也不是「可接管」那一路：必须如实标「已关闭」。
+  if (disabledHere(h)) return { key: 'disabled', label: pick('已关闭', 'Disabled') };
   // 配置目录在、但命令不在，而且没有任何可点通道：真实状态是「装了配置、缺 CLI」，
   // 不是「可接管」——给一个点了必然报错的开关比不给更糟。
   const noChannel = !availableChannels(h).length;
@@ -313,23 +316,32 @@ function availableChannels(h) {
   return CHANNELS.filter(c => c !== 'project' && (h.caps?.[c]?.ok || channelOn(h, c)));
 }
 const channelOn = (h, c) => c === 'project' ? Boolean(h.projectOn) : h.armed.includes(c);
-// planned 的家即使本机没装 CLI 也要显示：用户需要知道「这家未来会支持」，而不是看不见。
-const isReadyTarget = h => consoleOn(h) || availableChannels(h).length > 0 || Boolean(h.caps?.launch?.ok) || Boolean(h.planned);
+// 默认列表只列「真装了」的家：没装的家既不能接管也不能点名启动，塞进列表只会误导。
+// planned 的家例外——用户需要知道「这家未来会支持」。
+const isReadyTarget = h => consoleOn(h) || Boolean(h.planned) || (installed(h) && (availableChannels(h).length > 0 || Boolean(h.caps?.launch?.ok)));
 
 let targetFilter = 'all';
 let targetQuery = '';
 let visibleTargets = [];
 
 const targetRows = () => [...$('harness-list').querySelectorAll('.target-row')];
-const installed = h => Boolean(h.found || h.homeExists);
+// 分组只看真实状态：装没装、这家是不是被单独关掉、有没有可写通道。
+// 以前只问「有没有可写通道」，于是没装的家（只剩残留配置、或配置目录都不存在）也被画成「可接管」，
+// 开关点开也写不进任何地方。
 const targetGroup = h => {
   if (consoleOn(h)) return 'on';
+  // 还没确认能不能接管的家（kiro / goose）不算「未安装」——那是能力状态，不是本机环境状态。
+  if (h.planned) return 'future';
+  if (!installed(h)) return 'missing';
+  if (disabledHere(h)) return 'disabled';
   if (availableChannels(h).length > 0) return 'ready';
   return 'missing';
 };
 const groupOrder = () => [
   ['on', pick('已接管', 'Managed')],
   ['ready', pick('可接管', 'Ready')],
+  ['disabled', pick('已关闭', 'Disabled')],
+  ['future', pick('未来支持', 'Planned')],
   ['missing', pick('未安装', 'Not installed')],
 ];
 
@@ -346,7 +358,6 @@ let lastGridKey = '';
 
 function targetRow(h, index = 0, animate = false) {
   const status = toolStatus(h);
-  const installed = Boolean(h.found || h.homeExists);
   const on = consoleOn(h);
   const active = h.id === expanded;
   const rulesOnly = targetGroup(h) === 'rules';
@@ -379,14 +390,14 @@ function targetRow(h, index = 0, animate = false) {
     : node('label', { class: 'switch', title: switchTitle },
         node('input', {
           type: 'checkbox', 'data-toggle': h.id, checked: false,
-          disabled: !installed,
+          disabled: !installed(h),
           'aria-label': pick(`开启 ${harnessTitle(h.id)} 的人设接管`, `Enable persona injection for ${harnessTitle(h.id)}`)
         }),
         node('span', { class: 'switch-track', 'aria-hidden': 'true' })
       );
 
   return node('article', {
-    class: `tool-card target-row${active ? ' is-active' : ''}${on ? ' is-on' : ''}${!installed ? ' is-missing' : ''}${status.key === 'future' ? ' is-future' : ''}${animate ? ' is-entering' : ''}`,
+    class: `tool-card target-row${active ? ' is-active' : ''}${on ? ' is-on' : ''}${!installed(h) ? ' is-missing' : ''}${status.key === 'future' ? ' is-future' : ''}${animate ? ' is-entering' : ''}`,
     'data-id': h.id, 'data-expand': h.id
   },
     node('div', { class: 'tool-card-top' },
@@ -556,7 +567,6 @@ function unavailableDetail(h) {
  */
 function launchRow(h) {
   const cap = h.caps?.launch || {};
-  const installed = Boolean(h.found || h.homeExists);
   if (!cap.backend) {
     return node('p', { class: 'muted' }, h.reason || cap.why || pick('这家没有可用的注入通道。', 'No usable injection channel for this tool.'));
   }
@@ -713,7 +723,6 @@ function toolPanel(h) {
   const channels = availableChannels(h);
   const info = HARNESS_PURGE_EFFECTS[h.id];
   const effect = consoleOn(h) ? effectLabelSafe(h) : null;
-  const installed = Boolean(h.found || h.homeExists);
   const ev = captureFor(h.id) ? evidenceOf(captureFor(h.id)) : null;
 
   const personaOptions = [new Option(pick(`跟随全局（${personaName(state.personas.find(p => p.id === state.persona))}）`, `Follow global (${personaName(state.personas.find(p => p.id === state.persona))})`), '')];
@@ -738,7 +747,7 @@ function toolPanel(h) {
         type: 'button',
         class: `btn ${consoleOn(h) ? 'btn-ghost' : 'btn-primary'}`,
         'data-drawer-toggle': h.id,
-        disabled: !installed && !consoleOn(h)
+        disabled: !installed(h) && !consoleOn(h)
       }, consoleOn(h) ? pick('关闭接管', 'Disable') : pick('开启接管', 'Enable'));
 
   const closeIcon = node('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' },
@@ -765,7 +774,7 @@ function toolPanel(h) {
             h.personaFrom === 'override' ? node('span', { class: 'tool-flag is-accent' }, pick('专属', 'Custom')) : null,
             state.defaultsSet && state.defaults.harness === h.id ? node('span', { class: 'tool-flag' }, pick('默认', 'Default')) : null
           ),
-          node('p', {}, `${toolSub(h)} · ${installed ? pick('本机已安装', 'Installed') : pick('本机没装', 'Not installed')}`)
+          node('p', {}, `${toolSub(h)} · ${installed(h) ? pick('本机已安装', 'Installed') : pick('本机没装', 'Not installed')}`)
         )
       ),
       toggleBtn ? node('div', { class: 'detail-actions' }, toggleBtn) : null
@@ -809,7 +818,7 @@ function toolPanel(h) {
         node('h3', { class: 'panel-foot-title' }, pick('03 // 安全试跑', '03 // Dry-Run Verification'))
       ),
       node('div', { class: 'verify-bar' },
-        node('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-verify': h.id, disabled: !installed, title: pick('在临时目录里跑一次，不读取也不修改当前会话', 'Run once in an isolated temp dir without touching active sessions') }, pick('试跑一次', 'Verify Once')),
+        node('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-verify': h.id, disabled: !installed(h), title: pick('在临时目录里跑一次，不读取也不修改当前会话', 'Run once in an isolated temp dir without touching active sessions') }, pick('试跑一次', 'Verify Once')),
         ev ? chip(ev.label, ev.chipClass) : null,
         node('span', { class: 'verify-note' }, verifyNote(h))
       ),
@@ -1299,7 +1308,7 @@ $('batch-actions-select')?.addEventListener('change', async e => {
   e.target.value = '';
   operation(async () => {
     if (val === 'enable-ready') {
-      const ready = state.harnesses.filter(h => h.supported && (h.found || h.homeExists) && !consoleOn(h));
+      const ready = state.harnesses.filter(h => h.supported && installed(h) && !disabledHere(h) && !consoleOn(h));
       const done = [];
       for (const h of ready) {
         const channel = ['install', 'slash', 'shim'].find(c => h.caps?.[c]?.ok);

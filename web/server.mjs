@@ -476,6 +476,8 @@ async function state(withVersions, ctx = {}) {
 			install: d.install ?? null,
 			installSource: d.installSource ?? null,
 			homeExists: Boolean(d.homeExists),
+			// 只有配置目录、没有程序本体：前端据此区分「真装了」和「只剩残留」
+			residueOnly: Boolean(d.residueOnly),
 			persistable: Boolean(inst),
 			installed: Boolean(inst?.installed),
 			persistFile: inst?.file ?? null,
@@ -972,7 +974,9 @@ function applyArm(payload) {
 			const pick = ["install", "slash", "shim"].find(channel => caps[channel]?.ok);
 			if (!pick) return { error: "这个执行器暂时没有可用的接管方式，展开细节看原因。" };
 			// 已经是这个通道就什么都不做，开关是幂等的
-			if (current.includes(pick)) return { ok: true, results: [], channel: pick, done: [], skipped: [] };
+			// 被 disabledHarnesses 关掉的家：armed 里可能还留着通道，但注入不生效，不能当「已开启」直接跳过
+			const disabled = (st.disabledHarnesses ?? []).includes(payload.harness);
+			if (current.includes(pick) && !disabled) return { ok: true, results: [], channel: pick, done: [], skipped: [] };
 			const result = changeChannel(DATA, { harness: payload.harness, channel: pick, enabled: true });
 			return { ok: result.ok, results: [result], channel: pick, done: result.ok ? [result] : [], skipped: result.ok ? [] : [result.error] };
 		}

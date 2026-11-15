@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { configurationOf, changed, needsApply, sortedHarnesses, effectLabel, scopeSummary } from '../web/model.mjs';
+import { configurationOf, changed, needsApply, sortedHarnesses, effectLabel, scopeSummary, installedOf, disabledOf } from '../web/model.mjs';
 const sandbox = mkdtempSync(join(tmpdir(), 'ap-web-test-'));
 const data = join(sandbox, 'data');
 const { isolatedEnv } = await import("../lib/environment.mjs");
@@ -169,6 +169,20 @@ test('UI model: paused resume draft, selection sorting, conservative effect labe
   assert.match(scopeSummary({ armed: {}, paused: true }), /Paused/);
   assert.match(scopeSummary({ armed: { a: ['install'], b: [] } }, 'zh-CN'), /已选择 1 个/);
   assert.match(scopeSummary({ armed: {}, paused: true }, 'zh-CN'), /已暂停/);
+});
+test('UI model: 没装的家不算可接管，被单独关掉的家单独一档', () => {
+  // 真装了：有命令、有安装目录（含 macOS .app），或配置根在且不是只剩残留
+  assert.equal(installedOf({ bin: '/usr/local/bin/codex' }), true);
+  assert.equal(installedOf({ install: '/Applications/Antigravity.app' }), true);
+  assert.equal(installedOf({ found: true, homeExists: true, bin: null, install: null }), true);
+  // CLI 卸了只剩 ~/.grok/config.toml：found 还是 true，但不能再画成可接管
+  assert.equal(installedOf({ found: true, homeExists: true, residueOnly: true }), false);
+  // 配置目录都不存在、只有 install 通道可写：也不是装上
+  assert.equal(installedOf({ found: false, homeExists: false }), false);
+  assert.equal(disabledOf({ activation: { blockedBy: 'harness-disabled' } }), true);
+  assert.equal(disabledOf({ activation: { blockedBy: 'harness-off' } }), true);
+  // 全局暂停不是「这家被关掉」
+  assert.equal(disabledOf({ activation: { blockedBy: 'global-pause' } }), false);
 });
 test('one switch per harness: auto picks a working channel, off clears every channel', async () => {
   const armedOf = async id => (await api('state')).harnesses.find(h => h.id === id).armed;
