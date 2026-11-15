@@ -27,6 +27,9 @@ import { settingsOf } from "../lib/settings.mjs";
 // 数据（state.json + personas/）放用户目录，npm 升级不会连人设一起清掉
 // 编译态没有「包目录」可搬旧数据，传 null 跳过 legacy 迁移
 const DATA = dataHome();
+// 自带窗口宿主（WebView2）：瘦包与安装器里有它，窗口就是本应用的；bun 单文件产物没有，退回浏览器 --app。
+const nativeWindowExe = isCompiled() ? null : join(ROOT, "agent-purge-window.exe");
+const windowEngineLabel = opened => (opened.engine === "webview2" ? "原生窗口" : opened.browser);
 function cliLocale() {
 	let setting;
 	try {
@@ -860,6 +863,23 @@ function exitOnCloseSetting() {
 }
 
 /**
+ * 原生窗口宿主关窗前的确认文案：空字符串表示不确认。
+ * 文案在 Node 侧决定（设置页的「关闭窗口前先确认」+「关闭窗口时」），宿主只负责弹一个原生对话框。
+ */
+function closeConfirmText() {
+	try {
+		const { state } = loadState(DATA);
+		const desktop = settingsOf(state).desktop;
+		if (desktop.confirmOnClose === false) return "";
+		return desktop.exitOnClose
+			? L("关闭窗口会同时退出 agent-purge 服务，确定关闭吗？", "Closing the window also stops the agent-purge service. Close anyway?")
+			: L("关闭窗口后 agent-purge 会留在后台运行，确定关闭吗？", "The agent-purge service keeps running after the window closes. Close anyway?");
+	} catch {
+		return "";
+	}
+}
+
+/**
  * 探测某端口上是不是活着的 agent-purge。
  * /api/instance 是只报身份的秒回探针；老版本没有它，退回 /api/state 的形状判断
  * （/api/state 会做 detect，服务忙的时候可能几秒才回，所以只当兜底）。
@@ -911,7 +931,7 @@ async function reuseInstance(record, { noOpen }) {
 		console.log(`✓ agent-purge 已在运行，窗口已在任务栏 → ${url}`);
 		return;
 	}
-	const opened = openAppWindow(url, { profileDir });
+	const opened = openAppWindow(url, { profileDir, nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
 	if (opened.mode === "app" && opened.pid) updateWindow(DATA, record.pid, opened.pid);
 	console.log(opened.mode === "app"
 		? `✓ agent-purge 已在运行，已打开控制台窗口 → ${url}`
@@ -1013,9 +1033,9 @@ async function webCmd(options = {}) {
 		// 服务进程自己登记实例；等它写完，窗口 pid 才能补进同一条记录
 		await waitForInstance(child.pid);
 		if (!noOpen) {
-			const opened = openAppWindow(url, { profileDir: windowProfileDir(DATA) });
+			const opened = openAppWindow(url, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
 			if (opened.mode === "app" && opened.pid) updateWindow(DATA, child.pid, opened.pid);
-			if (opened.mode === "app") console.log(L(`已启动独立桌面窗口（${opened.browser}）`, `Opened standalone desktop window (${opened.browser})`));
+			if (opened.mode === "app") console.log(L(`已启动独立桌面窗口（${windowEngineLabel(opened)}）`, `Opened standalone desktop window (${windowEngineLabel(opened)})`));
 		}
 		console.log(L(`agent-purge 后台启动请求已发送 → ${url}（pid ${child.pid}；请确认服务可连接）`, `agent-purge background launch requested → ${url} (pid ${child.pid})`));
 		process.exit(0);
@@ -1042,8 +1062,8 @@ async function webCmd(options = {}) {
 				if (existing?.focused) console.log(L(`✓ 发现已在运行的 agent-purge 服务，已切换到已有窗口 → ${url}`, `✓ Found running agent-purge service; focused existing window → ${url}`));
 				else if (existing?.found) console.log(L(`✓ 发现已在运行的 agent-purge 服务，窗口已在任务栏 → ${url}`, `✓ Found running agent-purge service; window is in taskbar → ${url}`));
 				else if (!noOpen) {
-					const res = openAppWindow(url, { profileDir: windowProfileDir(DATA) });
-					if (res.mode === "app") console.log(L(`✓ 发现已在运行的 agent-purge 服务，已作为独立桌面窗口打开（${res.browser}）`, `✓ Found running agent-purge service; opened desktop window (${res.browser})`));
+					const res = openAppWindow(url, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
+					if (res.mode === "app") console.log(L(`✓ 发现已在运行的 agent-purge 服务，已作为独立桌面窗口打开（${windowEngineLabel(res)}）`, `✓ Found running agent-purge service; opened desktop window (${windowEngineLabel(res)})`));
 					else console.log(L(`✓ 发现已在运行的 agent-purge 服务，已在浏览器中打开：${url}`, `✓ Found running agent-purge service; opened in browser: ${url}`));
 				} else {
 					console.log(L(`agent-purge 服务已在 ${url} 运行`, `agent-purge service already running at ${url}`));
@@ -1068,7 +1088,7 @@ async function webCmd(options = {}) {
 	});
 	if (!noOpen) {
 		server.once("listening", () => {
-			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`, { profileDir: windowProfileDir(DATA) });
+			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
 			if (res.mode === "app" && port !== 0) updateWindow(DATA, process.pid, res.pid);
 			if (res.mode === "app") console.log(`✓ 已作为独立桌面窗口打开（无标签/地址栏，原生客户端体验）`);
 		});

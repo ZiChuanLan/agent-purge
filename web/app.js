@@ -1761,6 +1761,9 @@ window.addEventListener('beforeunload', e => {
   if (wantConfirm || configDirty() || editorDirty()) { e.preventDefault(); e.returnValue = ''; }
 });
 
+// 原生窗口宿主（WebView2）关窗前会问这里：WebView2 不会自己跑 beforeunload，
+// 未保存草稿的判断搬到显式入口；要不要弹确认由宿主按设置页的选项决定。
+window.__apDirty = () => configDirty() || editorDirty();
 refresh().then(() => navigate(pageFromHash(), { replace: true, focus: false })).then(() => checkAppUpdate(false)).catch(error => {
   setConnection(t('conn.disconnected'), 'is-down');
   notify(t('conn.disconnectedNotice', { error: error.message }), 'error');

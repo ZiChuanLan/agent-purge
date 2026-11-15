@@ -27,3 +27,7 @@ agent-purge 用于在使用者有权管理的 coding agent 中配置人设和提
 ## 第三方独立性
 
 本项目是独立开发的工具，与所支持的 coding agent、模型提供商及其关联主体不存在默认的隶属、授权、合作或背书关系。文中的产品名称和标识归相应权利人所有，兼容性说明不代表第三方对本项目作出认可或担保。
+
+## 第三方组件
+
+Windows 瘦包与安装器附带 `WebView2Loader.dll`（来自 Microsoft.Web.WebView2 SDK），并用它调用本机的 Microsoft Edge WebView2 Runtime 呈现控制台窗口；单文件 `agent-purge.exe` 自带 Bun 运行时。这些组件及其名称、标识归各自权利人所有，按各自的许可条款分发与使用。没有 WebView2 时程序退回本机 Chrome / Edge 的应用窗口模式，此时不涉及上述组件。

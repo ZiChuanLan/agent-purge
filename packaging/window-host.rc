@@ -1,0 +1,2 @@
+// 原生窗口宿主的图标资源：与启动器同一个 ico，任务栏和 Alt+Tab 里显示的是 agent-purge 自己。
+1 ICON "../web/assets/agent-purge.ico"

@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listFiles, readJSON, runtimeFiles, writeManifest } from './build-common.mjs';
+import { buildWindowHost } from './build-window-host.mjs';
 import { smoke } from './build-smoke.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -30,6 +31,10 @@ if (process.platform === 'win32') {
     if (gcc.status !== 0) throw new Error(`gcc: ${gcc.error?.message ?? gcc.stderr}`);
   } finally { rmSync(resource,{force:true});rmSync(object,{force:true}); }
   if (!existsSync(join(OUT,'agent-purge.exe'))) throw new Error('桌面启动器没有生成；不使用旧的预编译文件');
+  // 原生窗口宿主：WebView2 让控制台拥有自己的窗口（无浏览器账号/首启），失败不阻塞瘦包，
+  // 运行时 openAppWindow 会退回 Chrome/Edge 的 --app 模式。
+  try { buildWindowHost(ROOT, OUT); }
+  catch (error) { console.warn(`窗口宿主未生成，桌面端将退回浏览器 --app 模式：${error.message}`); }
 }
 writeManifest(OUT,'thin',VERSION,ROOT);
 await smoke(process.execPath,[join(OUT,'bin/agent-purge.mjs')],{cwd:OUT,version:VERSION});

@@ -17,7 +17,7 @@ npm run test:ui
 
 ## Windows 构建
 
-构建机需要 Node.js 20+、Bun、GCC/windres 和 Inno Setup 6。当前 CI 固定 Bun 1.4.4；每次发布记录实际工具链版本。
+构建机需要 Node.js 20+、Bun、GCC/g++（C++17）/windres 和 Inno Setup 6。窗口宿主还要 WebView2 SDK：`scripts/build-window-host.mjs` 从 NuGet 拉取钉死版本（`1.0.4314.35`）并校验 sha256，缓存在 `dist/.cache`，首次构建需联网；`WebView2Loader.dll` 随包分发，编译时只用到头文件。当前 CI 固定 Bun 1.4.4；每次发布记录实际工具链版本。
 
 ```bash
 npm run build:setup
