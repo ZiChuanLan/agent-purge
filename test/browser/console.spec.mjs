@@ -336,16 +336,13 @@ test('per-tool persona and mode selects report success instead of "pick is not a
   await expect(page.locator('#notice')).not.toHaveClass(/error/);
 
   const mode = page.locator('#panel-pi select[data-hmode]');
-  if (await mode.count()) {
-    const modeValue = await mode.locator('option').nth(1).getAttribute('value');
-    const modeWrite = page.waitForResponse(r => r.url().includes('/api/harness') && r.request().method() === 'POST');
-    await mode.selectOption(modeValue);
-    expect((await modeWrite).ok()).toBe(true);
-    await expect(page.locator('#notice')).not.toHaveClass(/error/);
-  }
+  const modeWrite = page.waitForResponse(r => r.url().includes('/api/harness') && r.request().method() === 'POST');
+  await mode.selectOption('append');
+  expect((await modeWrite).ok()).toBe(true);
+  await expect(page.locator('#notice')).toContainText('的力度改为');
+  await expect(page.locator('#notice')).toHaveClass(/\bgood\b/);
 
-  // 抛错发生在写盘之后：配置必须真的落盘，红条只是提示语塌了
   const state = await (await page.request.get(`${app.url}/api/state`)).json();
   const pi = state.harnesses.find(h => h.id === 'pi');
-  expect(pi.personaFrom === 'override' ? pi.persona : null).toBe(personaId);
+  expect(pi).toMatchObject({ persona: personaId, personaFrom: 'override', mode: 'append', modeFrom: 'override' });
 });
