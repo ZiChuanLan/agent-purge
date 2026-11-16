@@ -81,6 +81,14 @@ jobs:
       - name: Clean-runner install, run, uninstall and preserve user data
         shell: pwsh
         run: ./scripts/check-installer.ps1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-installer-evidence
+          path: |
+            ${{ runner.temp }}/ap-installer-*/acceptance.json
+            ${{ runner.temp }}/ap-installer-*/*.log
+          if-no-files-found: ignore
       - run: npm run release:checksums
       - run: npm run test:package
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

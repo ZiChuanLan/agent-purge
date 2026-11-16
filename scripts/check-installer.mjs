@@ -21,14 +21,24 @@ const setupOverride = process.argv.find(arg => arg.startsWith('--setup='))?.slic
 const setup = setupOverride ? resolve(setupOverride) : join(source, 'dist', `agent-purge-${version}-setup.exe`);
 assert.ok(existsSync(setup), 'Build the actual setup EXE first');
 const system32 = join(process.env.SystemRoot || 'C:\\Windows', 'System32');
-const powershell = join(system32, 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+const pwsh = join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
+const powershell = existsSync(pwsh) ? pwsh : join(system32, 'WindowsPowerShell', 'v1.0', 'powershell.exe');
 const taskkill = join(system32, 'taskkill.exe');
+const powershellEnv = input => Object.fromEntries(Object.entries(input).filter(([key]) =>
+  !['PSMODULEPATH', 'PSHOME'].includes(key.toUpperCase())));
+function inspectScript(script, inputEnv = process.env) {
+  const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+    env: powershellEnv(inputEnv), encoding: 'utf8', windowsHide: true, timeout: 60000,
+  });
+  assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout || 'PowerShell inspection failed');
+  return result.stdout.replace(/^\uFEFF/, '');
+}
 const realUserFiles = ['.agent-purge/state.json', '.agent-purge/footprints.json', '.pi/agent/settings.json', '.pi/agent/AGENTS.md']
   .map(file => join(process.env.USERPROFILE, file));
 const userSnapshot = Object.fromEntries(realUserFiles.map(file => [file, existsSync(file) ? hashFile(file) : null]));
 
 function footprint() {
-  const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', `
+  const output = inspectScript(`
     $ErrorActionPreference='Stop'
     [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
     $key='{8E4C1D07-2B39-4C6E-9F3A-5D1B7C0A6E42}_is1'
@@ -47,9 +57,8 @@ function footprint() {
       [IO.Path]::Combine([Environment]::GetFolderPath('CommonPrograms'),'agent-purge')
     )
     @{installs=$installs;shortcuts=$shortcuts} | ConvertTo-Json -Depth 5 -Compress
-  `], { encoding: 'utf8', windowsHide: true, timeout: 15000 });
-  assert.equal(result.status, 0, result.stderr || result.error?.message);
-  return JSON.parse(result.stdout.replace(/^\uFEFF/, ''));
+  `);
+  return JSON.parse(output);
 }
 const before = footprint();
 assert.deepEqual(before.installs, [], 'Existing installation found: no changes made');
@@ -132,16 +141,15 @@ async function installedLauncher() {
 }
 
 function inspectWindow(pid) {
-  const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', `
+  const output = inspectScript(`
     [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
     $process=Get-Process -Id ${pid} -ErrorAction SilentlyContinue
-    $details=Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction SilentlyContinue
-    $children=@(Get-CimInstance Win32_Process -Filter "ParentProcessId=${pid}" -ErrorAction SilentlyContinue | ForEach-Object {$_.Name})
+    $details=Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -OperationTimeoutSec 10 -ErrorAction Stop
+    $children=@(Get-CimInstance Win32_Process -Filter "ParentProcessId=${pid}" -OperationTimeoutSec 10 -ErrorAction Stop | ForEach-Object {$_.Name})
     @{alive=($null -ne $process);handle=$(if($process){[string]$process.MainWindowHandle}else{'0'});
       title=$(if($process){$process.MainWindowTitle}else{''});exe=$details.ExecutablePath;children=$children} | ConvertTo-Json -Compress
-  `], { env, encoding: 'utf8', windowsHide: true, timeout: 10000 });
-  assert.equal(result.status, 0, result.stderr);
-  return JSON.parse(result.stdout.replace(/^\uFEFF/, ''));
+  `, env);
+  return JSON.parse(output);
 }
 
 async function installedDesktop() {
@@ -238,15 +246,24 @@ async function installedDesktop() {
     assert.equal(inspectWindow(record.windowPid).alive, false);
     assert.ok(existsSync(join(env.AGENT_PURGE_HOME, 'window-profile', 'window-state.txt')));
     pass('closing-native-window-exits-service-and-saves-window-state');
+  } catch (error) {
+    report.desktopError = error.stack || error.message;
+    console.error(`Desktop acceptance failed: ${report.desktopError}`);
+    throw error;
   } finally {
     killTree(child);
     await Promise.race([closed, delay(5000)]);
     for (const windowPid of windowPids) {
-      const remaining = inspectWindow(windowPid);
-      if (remaining.alive && remaining.exe &&
-          resolve(remaining.exe).toLowerCase() === join(app, 'agent-purge-window.exe').toLowerCase())
-        spawnSync(taskkill, ['/PID', String(windowPid), '/T', '/F'],
-          { windowsHide: true, stdio: 'ignore', timeout: 10000 });
+      try {
+        const remaining = inspectWindow(windowPid);
+        if (remaining.alive && remaining.exe &&
+            resolve(remaining.exe).toLowerCase() === join(app, 'agent-purge-window.exe').toLowerCase())
+          spawnSync(taskkill, ['/PID', String(windowPid), '/T', '/F'],
+            { windowsHide: true, stdio: 'ignore', timeout: 10000 });
+      } catch (error) {
+        report.desktopCleanupError = error.message;
+        console.error(`Desktop cleanup inspection failed: ${error.message}`);
+      }
     }
     if (browser) await browser.close().catch(() => {});
   }
