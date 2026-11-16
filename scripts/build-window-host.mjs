@@ -3,7 +3,7 @@
 // WebView2 SDK 只在构建期需要：头文件用于编译，WebView2Loader.dll 随包分发（运行时由宿主从 exe
 // 同目录加载，不链接导入库）。SDK 从 NuGet 拉取并校验 sha256，版本与哈希都钉死在这里。
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -53,9 +53,9 @@ function ensureSdk(root, cacheRoot) {
   run('tar', ['-xf', nupkg, '-C', unpack]); // Windows 自带 bsdtar 能解 zip
   mkdirSync(join(cache, 'include'), { recursive: true });
   for (const name of ['WebView2.h', 'WebView2EnvironmentOptions.h']) {
-    run('cmd.exe', ['/d', '/c', 'copy', '/y', join(unpack, 'build/native/include', name), join(cache, 'include', name)]);
+    copyFileSync(join(unpack, 'build/native/include', name), join(cache, 'include', name));
   }
-  run('cmd.exe', ['/d', '/c', 'copy', '/y', join(unpack, 'build/native/x64/WebView2Loader.dll'), loader]);
+  copyFileSync(join(unpack, 'build/native/x64/WebView2Loader.dll'), loader);
   rmSync(unpack, { recursive: true, force: true });
   return { header, include: join(cache, 'include'), loader };
 }
@@ -79,6 +79,28 @@ function verifyIids(header, source) {
 }
 
 /**
+ * 宿主的导入表里不许出现 MinGW 运行库。
+ * 这些 DLL 只存在于构建机的工具链里，用户机器上没有，加载器会直接以 0xC0000135 退出（issue #20）。
+ * 构建期用 objdump 对账，比等用户报「双击没反应」便宜得多。
+ */
+export function verifyStaticRuntime(exe, label = '窗口宿主', {
+  inspect = file => spawnSync('objdump', ['-p', file], { encoding: 'utf8', windowsHide: true }),
+} = {}) {
+  const dump = inspect(exe);
+  if (dump.error || dump.status !== 0)
+    throw Object.assign(new Error(`objdump: ${dump.error?.message ?? dump.stderr}`), { code: 'RUNTIME_INSPECTION' });
+  const imports = [...String(dump.stdout).matchAll(/DLL Name:\s*(\S+)/g)].map(match => match[1]);
+  if (!imports.length)
+    throw Object.assign(new Error(`${label}导入表未能读取，不能确认运行库依赖：${exe}`), { code: 'RUNTIME_INSPECTION' });
+  const dynamic = imports
+    .filter(name => /^(libgcc_s_.*|libstdc\+\+.*|libwinpthread.*|libssp.*|libgomp.*|libquadmath.*)\.dll$/i.test(name));
+  if (!dynamic.length) return;
+  // code 让调用方把这类失败当硬错误：真正的宿主构建失败可以退回浏览器窗口，发布一个加载不了的 exe 不行。
+  throw Object.assign(
+    new Error(`${label}仍动态依赖 MinGW 运行库（${dynamic.join('、')}）：用户机器上没有这些 DLL，会 0xC0000135 静默退出；请保持 -static`),
+    { code: 'MINGW_RUNTIME' });
+}
+/**
  * 编译窗口宿主并放进瘦包目录。
  * @param {string} root 仓库根目录
  * @param {string} out 瘦包输出目录（dist/agent-purge）
@@ -98,10 +120,13 @@ export function buildWindowHost(root, out, cacheRoot = join(root, 'dist', '.cach
   const windres = spawnSync('windres', [resource, '-O', 'coff', '-o', object], { cwd: root, encoding: 'utf8' });
   if (windres.status !== 0) throw new Error(`windres: ${windres.error?.message ?? windres.stderr}`);
 
-  const gcc = spawnSync('g++', ['-std=c++17', '-O2', '-mwindows', '-s', '-I', sdk.include, source, object, '-o', exe,
+  // -static：把 libgcc / libstdc++ / libwinpthread 静态链进来。这三个 DLL 系统不自带、安装包也不带，
+  // 一旦动态依赖，用户机器上就是 0xC0000135 静默退出（issue #20）。体积从 ~70KB 涨到 ~270KB，值得。
+  const gcc = spawnSync('g++', ['-std=c++17', '-O2', '-mwindows', '-s', '-static', '-I', sdk.include, source, object, '-o', exe,
     '-lole32', '-luuid', '-lshell32'], { cwd: root, encoding: 'utf8' });
   if (gcc.status !== 0) throw new Error(`g++: ${gcc.error?.message ?? gcc.stderr}`);
   if (!existsSync(exe)) throw new Error('窗口宿主没有生成');
+  verifyStaticRuntime(exe);
 
   const loader = join(out, 'WebView2Loader.dll');
   writeFileSync(loader, readFileSync(sdk.loader));

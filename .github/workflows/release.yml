@@ -25,8 +25,13 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        node: [20, 22, 24]
     permissions:
       contents: read
     steps:
@@ -36,7 +41,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
       - run: npm ci --ignore-scripts
       - run: npm run check:repo
       - run: npm test
@@ -156,8 +161,37 @@ jobs:
             dist/linux-manifest.json
           if-no-files-found: error
           retention-days: 14
+
+  verify_linux:
+    needs: build_linux
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-assets-linux
+          path: dist
+      - run: npm run test:linux-artifacts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: linux-acceptance-${{ matrix.os }}
+          path: out/linux-acceptance
+          if-no-files-found: ignore
+
   publish:
-    needs: [build, build_mac, build_linux]
+    needs: [build, build_mac, build_linux, verify_linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -207,6 +241,11 @@ jobs:
           test "$RELEASE_TAG" = "v$VERSION"
           test -n "$NODE_AUTH_TOKEN"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Verify final artifact checksums before publishing
+        run: |
+          set -euo pipefail
+          cd release-assets/dist
+          sha256sum --check SHA256SUMS.txt
       - name: Publish npm package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

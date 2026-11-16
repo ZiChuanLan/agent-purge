@@ -17,7 +17,7 @@ npm run test:ui
 
 ## Windows 构建
 
-构建机需要 Node.js 20+、Bun、GCC/g++（C++17）/windres 和 Inno Setup 6。窗口宿主还要 WebView2 SDK：`scripts/build-window-host.mjs` 从 NuGet 拉取钉死版本（`1.0.4314.35`）并校验 sha256，缓存在 `dist/.cache`，首次构建需联网；`WebView2Loader.dll` 随包分发，编译时只用到头文件。当前 CI 固定 Bun 1.4.4；每次发布记录实际工具链版本。
+构建机需要 Node.js 20+、Bun、GCC/g++（C++17）/windres/objdump 和 Inno Setup 6。窗口宿主还要 WebView2 SDK：`scripts/build-window-host.mjs` 从 NuGet 拉取钉死版本（`1.0.4314.35`）并校验 sha256，缓存在 `dist/.cache`，首次构建需联网；`WebView2Loader.dll` 随包分发，编译时只用到头文件。宿主必须 `-static` 链接 MinGW 运行库（libgcc / libstdc++ / libwinpthread），构建脚本会用 objdump 检查导入表，混进 MinGW DLL、检查工具不可用或导入表读不出来，都直接失败——用户机器上没有这些 DLL，宿主会以 `0xC0000135` 静默退出（issue #20）。允许回退的宿主编译失败会移除半成品，不能将失败的 exe 带进发布包。当前 CI 固定 Bun 1.4.4；每次发布记录实际工具链版本。
 
 ```bash
 npm run build:setup
@@ -47,7 +47,7 @@ ZIP 里的 `agent-purge.exe` 是薄启动器，**不是**独立 EXE。安装器�
 
 ## Linux 构建
 
-`npm run build:linux`（也可在任意 Linux 上本地执行，正式发布由 `.github/workflows/release.yml` 的 `build_linux` 在 `ubuntu-latest` runner 自动执行）用 Bun 交叉编译 `linux-x64` / `linux-arm64` 单文件二进制，本机架构会真实跑一次 `smoke`（`--help`、`status`、`--serve` 静态资源与版本号），再产出：
+`npm run build:linux`（也可在任意 Linux 上本地执行，正式发布由 `.github/workflows/release.yml` 的 `build_linux` 在 `ubuntu-latest` runner 自动执行）用 Bun 交叉编译 `linux-x64` / `linux-arm64` 单文件二进制，本机架构会真实跑一次 `smoke`（`--help`、`status`、`--serve` 静态资源与版本号）。发布前 `verify_linux` 另在 x64 与 ARM64 原生 runner 执行 `npm run test:linux-artifacts`，核对哈希、单文件运行、便携安装、Debian 安装/运行/卸载与可选 AppImage；任一失败都不会进入发布。产物包括：
 
 - `dist/agent-purge-<版本>-linux-<架构>`：自带运行时的单文件二进制
 - `dist/agent-purge-<版本>-linux-<架构>.tar.gz`：便携包，含 `.desktop`、图标、`LICENSE`、`README` 与免 root 的 `install.sh`
@@ -74,6 +74,8 @@ ZIP 里的 `agent-purge.exe` 是薄启动器，**不是**独立 EXE。安装器�
 
 本机隔离测试不等于全新系统。发布前还需检查低版本 Node、GUI 提示、SmartScreen、跨版本升级、权限不足和[已知覆盖安装问题](reference/compatibility.md#已知发布限制)。
 
+安装/卸载验收优先在一次性 Windows runner 或虚拟机执行：独立 `AGENT_PURGE_HOME` 不能隔离 Windows 的真实注册表和已知文件夹。不要在主力用户目录临时拼安装/卸载脚本。PowerShell 的 `$home` 就是内置只读 `$HOME`，不能用于临时路径；使用 `$fixtureRoot` 等名称，开启遇错终止，删除前核对绝对路径确实位于专属测试目录中。
+
 ## CI
 
 - `test.yml`：Windows / Ubuntu / macOS × Node 20 / 22 / 24，tarball 安装，三浏览器 UI 检查，以及 Ubuntu 上的 `build:linux` 产物构建与上传。
@@ -99,9 +101,10 @@ git push origin v0.2.11
 
 tag 推送会触发 `release.yml`：
 
-1. `verify`：Node 24 上 `npm ci`、`check:repo`、全部测试、`test:package`。
+1. `verify`：Windows/Linux/macOS × Node 20/22/24 上 `npm ci`、`check:repo`、全部测试、`test:package`。
 2. `build` / `build_mac` / `build_linux`：分别在 Windows 上构建 ZIP/EXE/setup 并跑安装验收、在 `macos-latest` 上构建 arm64/x64 未签名 `.dmg`、在 `ubuntu-latest` 上构建 Linux 二进制 / `.tar.gz` / `.deb`（AppImage 可选）；汇总产物、校验和与 npm tarball。
-3. `publish`：校验 tag 与版本一致；`npm publish --provenance`（已存在的同版本会跳过）；创建 GitHub Release 并上传附件。
+3. `verify_linux`：x64 与 ARM64 原生 Linux runner 校验并运行每种对应架构产物。
+4. `publish`：校验 tag 与版本一致、核对所有产物 SHA-256；`npm publish --provenance`（已存在的同版本会跳过）；创建 GitHub Release 并上传附件。
 
 需要重跑时使用 Actions 的 `workflow_dispatch`，输入已存在的 tag；发布是幂等的，不会重复上传同版本 npm 包，Release 附件使用 `--clobber` 覆盖。
 

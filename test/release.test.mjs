@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { isolatedEnv } from '../lib/environment.mjs';
 import { runtimeFiles, validateThin, writeManifest } from '../scripts/build-common.mjs';
 import { checkDocumentationLinks, publicationProblem } from '../scripts/check-repo.mjs';
+import { verifyStaticRuntime } from '../scripts/build-window-host.mjs';
 
 test('thin manifest detects changed source, changed payload, extra files and wrong product', () => {
   const root=mkdtempSync(join(tmpdir(),'ap-manifest-')), src=join(root,'source'), out=join(root,'payload');
@@ -45,10 +46,15 @@ test('starter template is not excluded from a fresh Git checkout', () => {
 });
 test('installer cleanup preserves user data; permanent CLI removal requires explicit confirmation', () => {
   const installer = readFileSync(resolve('packaging/agent-purge.iss'), 'utf8');
-  assert.match(installer, /agent-purge\.exe'\), 'clean'/);
+  assert.match(installer, /agent-purge\.exe'\), 'clean --keep-failed'/);
+  assert.doesNotMatch(installer, /function InitializeUninstall/, 'cleanup must not run before the uninstall confirmation');
+  assert.match(installer, /procedure CurUninstallStepChanged/);
+  assert.match(installer, /if CurUninstallStep <> usUninstall then\s+Exit/);
+  assert.match(installer, /if not CleanComplete then\s+RaiseException/, 'a hard restoration failure must abort before payload deletion');
   assert.doesNotMatch(installer, /'self-uninstall/);
   assert.doesNotMatch(installer, /(?:^|\W)MsgBox\(/, 'silent acceptance must not block on unsuppressible dialogs');
   assert.match(installer, /SuppressibleMsgBox/);
+  assert.match(installer, /^AppMutex=agent-purge-desktop-active$/m, 'running desktop binaries must block replacement/removal');
   assert.match(installer, /Tasks: desktopicon/, 'desktop shortcut must be explicitly selectable');
   const root = mkdtempSync(join(tmpdir(), 'ap-uninstall-confirm-')), env = isolatedEnv(root);
   try {
@@ -60,6 +66,48 @@ test('installer cleanup preserves user data; permanent CLI removal requires expl
     assert.equal(readFileSync(file, 'utf8'), 'USER DATA');
     assert.deepEqual(readdirSync(env.AGENT_PURGE_JOURNAL_DIR), []);
     assert.deepEqual(readdirSync(env.AGENT_PURGE_HOME), ['keep.txt']);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+test('MinGW runtime checks reject dynamic imports and fail closed when inspection is unavailable', () => {
+  const inspect = names => () => ({ status: 0, stdout: names.map(name => `DLL Name: ${name}`).join('\n') });
+  assert.doesNotThrow(() => verifyStaticRuntime('host.exe', 'host', { inspect: inspect(['KERNEL32.dll', 'USER32.dll', 'api-ms-win-crt-runtime-l1-1-0.dll']) }));
+  for (const name of ['libgcc_s_seh-1.dll', 'LIBSTDC++-6.DLL', 'libwinpthread-1.dll', 'libssp-0.dll', 'libgomp-1.dll']) {
+    assert.throws(() => verifyStaticRuntime('host.exe', 'host', { inspect: inspect([name]) }), error => error.code === 'MINGW_RUNTIME' && error.message.includes(name));
+  }
+  for (const dump of [{ status: 1, stderr: 'bad PE' }, { status: null, error: new Error('ENOENT') }, { status: 0, stdout: 'not an import table' }]) {
+    assert.throws(() => verifyStaticRuntime('host.exe', 'host', { inspect: () => dump }), error => error.code === 'RUNTIME_INSPECTION');
+  }
+});
+
+test('clean previews do not migrate legacy state, initialize data, recover journals or write logs', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ap-clean-preview-')), env = isolatedEnv(root);
+  try {
+    writeFileSync(join(env.AGENT_PURGE_HOME, '.defaults.json'), '{"harness":"pi","mode":"append"}');
+    writeFileSync(join(env.AGENT_PURGE_HOME, 'footprints.json'), '{broken');
+    writeFileSync(join(env.AGENT_PURGE_JOURNAL_DIR, 'unrelated.json'), 'KEEP');
+    const before = readdirSync(env.AGENT_PURGE_HOME).sort();
+    for (const cmd of ['clean', 'self-uninstall']) {
+      const result = spawnSync(process.execPath, [resolve('bin/agent-purge.mjs'), cmd, '--dry-run', '--keep-failed'], { env, encoding: 'utf8' });
+      assert.equal(result.status, 1, result.stderr);
+      assert.doesNotMatch(result.stderr, /TypeError/);
+      assert.deepEqual(readdirSync(env.AGENT_PURGE_HOME).sort(), before);
+      assert.equal(readFileSync(join(env.AGENT_PURGE_JOURNAL_DIR, 'unrelated.json'), 'utf8'), 'KEEP');
+    }
+    const missing = join(root, 'nonexistent-data');
+    const result = spawnSync(process.execPath, [resolve('bin/agent-purge.mjs'), 'clean', '--dry-run'], { env: { ...env, AGENT_PURGE_HOME: missing }, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readdirSync(root).includes('nonexistent-data'), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('clean with a corrupt state reports the original error without a secondary skipped.length crash', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ap-clean-state-')), env = isolatedEnv(root);
+  try {
+    writeFileSync(join(env.AGENT_PURGE_HOME, 'state.json'), '{broken');
+    const result = spawnSync(process.execPath, [resolve('bin/agent-purge.mjs'), 'clean', '--keep-failed'], { env, encoding: 'utf8' });
+    assert.equal(result.status, 1);
+    assert.match(result.stdout, /state.json 损坏/);
+    assert.doesNotMatch(result.stderr, /TypeError/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 test('CLI --help never initializes configuration or recovers a journal', () => {

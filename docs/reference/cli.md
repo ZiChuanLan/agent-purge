@@ -124,7 +124,9 @@ Web 的「规则文件」页支持切换「当前项目」与「全局目录」�
 
 `self-uninstall --dry-run` 只预览。不传 `--yes` 不会永久删除。
 
-Windows 安装器卸载会先撤销接管，再移除程序；恢复冲突时停止卸载并保留凭据。ZIP / 独立 EXE 也应先 `clean` 再删除程序。外部编辑会保留，旧版或被修改的 DSH 插件可能改名为 `.disabled-by-agent-purge*`；核对后再自行处理。
+Windows 安装器在确认卸载后才撤销接管，再移除程序；取消确认不会改配置。配置或账本损坏、活跃通道还原冲突、PATH 撤销失败仍会停止卸载并保留凭据。无法还原的旧文件/自定义账本会跳过，备份和账本保留在数据目录，详情写入 `clean-leftovers.log`。
+
+CLI 的 `clean` 默认仍严格检查；显式 `clean --keep-failed` 才容忍上述旧账本（有跳过项时退出码为 3，而不是 0）。`--dry-run` 不初始化或迁移数据、不回滚 journal、不写日志。ZIP / 独立 EXE 也应先 `clean` 再删除程序。外部编辑会保留，旧版或被修改的 DSH 插件可能改名为 `.disabled-by-agent-purge*`；核对后再自行处理。
 
 `arm --all` / `disarm --all` 会同时操作总电源和执行器通道。只需临时停用时用 `pause`，不要全量卸载。历史会话中已经发送的内容不会被撤回。
 
@@ -160,5 +162,6 @@ PowerShell 赋值仅影响当前会话；`setx` 影响之后新开的进程。�
 - **桌面窗口是谁的**：瘦包与安装器带 `agent-purge-window.exe`，窗口由它用 WebView2 打开——属于本应用，没有浏览器地址栏、没有浏览器账号，任务栏图标就是 agent-purge。数据目录里的 `window-profile/` 存放窗口尺寸记忆和 WebView2 数据。
 - **为什么以前会弹 Microsoft 账号登录**：老版本借 Chrome / Edge 的 `--app` 模式当窗口，Edge 的首启一定会把系统里已登录的 Microsoft 账号关联进新的浏览器 profile（`--disable-sync` 与 `--disable-features=ImplicitSignIn` 都拦不住，实测），看起来就像“这个工具在要账号”。换内核后旧 profile 会被弃掉重建，归属记录在 `window-profile/.agent-purge-browser`。
 - **什么时候会退回浏览器窗口**：机器上没有 WebView2 Runtime、或缺少 `WebView2Loader.dll`、或用的是免安装单文件 `agent-purge.exe` 与 npm 安装（这两者不带窗口宿主）时，退回 Chrome `--app`（没有 Chrome 才用 Edge）；再不行交给系统默认浏览器。此时窗口是浏览器本体的，Edge 会把系统账号关联进新 profile——这是 Edge 自己的行为，agent-purge 不读取也不发送任何账号信息。
+- **双击后没有窗口**：原生窗口宿主启动即失败时，会记录到 `window-profile/window-error.log`（`0xC0000135` 是加载器找不到 DLL），并尝试退回浏览器窗口，不重启后台服务；单例登记会使用回退窗口的 PID。浏览器也不可用时，按登记地址手动打开。回退浏览器的配置使用 `window-profile/browser-fallback/`，不会清掉原生窗口数据。
 - **更新显示无公开 Release**：不代表 npm 已是最新版。npm 安装用 `npm outdated -g agent-purge` 检查版本。
 - **换模型或中转后人设表现不同**：先区分“请求是否包含人设”和“模型是否遵循人设”。Web 的“安全试跑”不测试你的真实中转；需要核对中转前后的 system/developer 字段。不要把 API Key 或完整私密人设贴进公开 issue，见[验证范围](compatibility.md#验证状态与第三方中转)。

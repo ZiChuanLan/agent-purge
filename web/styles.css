@@ -963,10 +963,6 @@ main {
   background: var(--surface-2); border: 1px solid var(--line);
   font-size: 12px; font-weight: 550; color: var(--muted);
 }
-.tool-flag.is-accent {
-  background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent);
-}
-
 .drawer-section { display: flex; flex-direction: column; gap: 12px; }
 .drawer-section h3, .panel-foot-title {
   font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.03em;

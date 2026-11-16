@@ -47,6 +47,7 @@ jobs:
       - run: npm ci --ignore-scripts
       # 交叉架构由 Bun 直接产出；本机架构会真实运行一次 smoke 验收。
       - run: npm run build:linux
+      - run: npm run test:linux-artifacts
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-package

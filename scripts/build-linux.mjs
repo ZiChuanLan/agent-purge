@@ -240,9 +240,13 @@ License: MIT
           env: { ...process.env, ARCH: APPIMAGE_ARCH[arch], APPIMAGE_EXTRACT_AND_RUN: '1' },
         });
         chmodSync(image, 0o755);
-        const probeRun = spawnSync(image, ['--help'], { encoding: 'utf8', windowsHide: true, timeout: 60000, env: { ...process.env, APPIMAGE_EXTRACT_AND_RUN: '1' } });
-        if (probeRun.status !== 0) {
-          console.log(`  警告：AppImage 自检未通过（exit ${probeRun.status ?? 'null'}）：${(probeRun.stderr || '').slice(-300)}`);
+        if (arch === process.arch) {
+          const probeRoot = mkdtempSync(join(buildTemp, 'appimage-smoke-'));
+          const { isolatedEnv } = await import('../lib/environment.mjs');
+          const probeRun = spawnSync(image, ['--help'], { cwd: probeRoot, encoding: 'utf8', windowsHide: true, timeout: 60000,
+            env: { ...isolatedEnv(probeRoot), APPIMAGE_EXTRACT_AND_RUN: '1' } });
+          if (probeRun.status !== 0)
+            throw new Error(`AppImage 原生自检失败（${arch}, exit ${probeRun.status ?? 'null'}）：${probeRun.error?.message || probeRun.stderr}`);
         }
         artifacts[`agent-purge-${version}-linux-${arch}.AppImage`] = hashFile(image);
         console.log(`AppImage：${image} (${(statSync(image).size / 1048576).toFixed(1)} MB)`);

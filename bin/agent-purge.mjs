@@ -7,7 +7,7 @@
 //   用东西（跑起来）           <harness> / 裸敲已 arm 的命令名 / web / ls / status
 import { spawn } from "node:child_process";
 import { join, resolve } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolveLocale, pickText } from "../lib/i18n.mjs";
 import { backends, oneshots } from "../backends/index.mjs";
 import { resolveBin, launchConfig, prepareCommand, spawnPrepared } from "../lib/spawn.mjs";
@@ -70,11 +70,13 @@ if (process.platform === "darwin" && isCompiled() && process.env.AGENT_PURGE_ISO
 	const cur = (process.env.PATH || "").split(":").filter(Boolean);
 	process.env.PATH = [...cur, ...extra.filter((p) => !cur.includes(p))].join(":");
 }
-ensureDataHome(isCompiled() ? null : ROOT);
-
-installCrashHandlers();
-const recovered = recover(); // 只在真实命令入口恢复；--help 不读写 journal
-if (recovered > 0) console.log(`[restore] 回滚了 ${recovered} 个上次残留的配置文件`);
+const cleanPreview = ["clean", "self-uninstall"].includes(argv[0]) && argv.includes("--dry-run");
+if (!cleanPreview) {
+	ensureDataHome(isCompiled() ? null : ROOT);
+	installCrashHandlers();
+	const recovered = recover(); // 帮助与清理预览不初始化数据、不恢复 journal
+	if (recovered > 0) console.log(`[restore] 回滚了 ${recovered} 个上次残留的配置文件`);
+}
 
 // 编译态与脚本态使用同一个 Web 入口；0 表示系统分配空闲端口，供隔离 smoke 使用。
 if (argv[0] === "--serve") {
@@ -292,15 +294,28 @@ switch (cmd) {
 	case "self-uninstall": {
 		const { clean } = await import("../lib/clean.mjs");
 		const dryRun = argv.includes("--dry-run");
+		// --keep-failed：还原不了的旧账本只记一笔，退出码不为红，卸载不至于被一条早已失效的记录永久卡住。
+		const keepFailed = argv.includes("--keep-failed");
 		if (dryRun) console.log("dry-run：只报会做什么，一条也不写\n");
-		const r = clean(DATA, { all: cmd === "self-uninstall", dryRun });
+		const r = clean(DATA, { all: cmd === "self-uninstall", dryRun, keepFailed });
 		for (const s of r.steps) {
 			const detail = typeof s.detail === "string" ? s.detail : JSON.stringify(s.detail);
 			console.log(`${s.ok ? "✓" : "✗"} ${s.what}${s.detail === undefined ? "" : ` — ${detail}`}`);
 		}
+		if (r.skipped.length) {
+			const lines = r.skipped.map((s) => `  · ${s.what} — ${s.detail}`);
+			console.log(`\n已跳过 ${r.skipped.length} 项无法撤销的记录（账本与备份原地保留，重试仍有效）：\n${lines.join("\n")}`);
+			// 退出码 3 会被卸载器看见：干净完成，但有跳过项。安装器给人看的控制台是隐藏的，所以落一份日志。
+			if (!dryRun) try {
+				appendFileSync(join(DATA, "clean-leftovers.log"),
+					`${new Date().toISOString()} clean --keep-failed\n${lines.join("\n")}\n`);
+				console.log(`  留痕：${join(DATA, "clean-leftovers.log")}`);
+			} catch { /* 日志写不上不影响退出码 */ }
+		}
 		if (r.leftovers.length) console.log(`\n还剩：\n${r.leftovers.map((l) => `  · ${l}`).join("\n")}`);
 		console.log(r.ok && !r.leftovers.length ? "\n干净了：没有残留" : "\n有残留，见上");
 		if (!r.ok) process.exitCode = 1;
+		else if (r.skipped.length) process.exitCode = 3;
 		if (cmd === "self-uninstall") console.log("\n代码本身用包管理器卸：npm uninstall -g agent-purge");
 		break;
 	}
@@ -919,7 +934,7 @@ function liveInstance(home = DATA) {
 async function reuseInstance(record, { noOpen }) {
 	const url = `http://127.0.0.1:${record.port}`;
 	if (noOpen) { console.log(`agent-purge 服务已在 ${url} 运行`); return; }
-	const { openAppWindow, focusConsoleWindow, windowProfileDir } = await import("../lib/window.mjs");
+	const { openAppWindowWithFallback: openAppWindow, focusConsoleWindow, windowProfileDir } = await import("../lib/window.mjs");
 	const profileDir = windowProfileDir(DATA);
 	const window = focusConsoleWindow({ pid: record.windowPid, profileDir });
 	if (window.focused) {
@@ -931,7 +946,7 @@ async function reuseInstance(record, { noOpen }) {
 		console.log(`✓ agent-purge 已在运行，窗口已在任务栏 → ${url}`);
 		return;
 	}
-	const opened = openAppWindow(url, { profileDir, nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
+	const opened = await openAppWindow(url, { profileDir, nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
 	if (opened.mode === "app" && opened.pid) updateWindow(DATA, record.pid, opened.pid);
 	console.log(opened.mode === "app"
 		? `✓ agent-purge 已在运行，已打开控制台窗口 → ${url}`
@@ -979,7 +994,7 @@ async function webCmd(options = {}) {
 	const autoExit = autoExitFlag ?? desktopManaged;
 	// 「关窗要不要退」每次现读设置：在设置页改成常驻后，下一次关窗就留下服务，不用重启进程
 	const exitPolicy = () => (autoExitFlag === true ? true : autoExitFlag === false ? false : desktopManaged ? exitOnCloseSetting() : true);
-	const { focusConsoleWindow, openAppWindow, windowProfileDir } = await import("../lib/window.mjs");
+	const { focusConsoleWindow, openAppWindowWithFallback: openAppWindow, windowProfileDir } = await import("../lib/window.mjs");
 
 	// 单例：同一个数据目录里已经有活着的控制台，就把它的窗口叫到前台然后退出。
 	// 这一步必须在绑端口之前——否则桌面端重复双击会多起一个服务、多开一个页面（issue #14）。
@@ -1033,7 +1048,7 @@ async function webCmd(options = {}) {
 		// 服务进程自己登记实例；等它写完，窗口 pid 才能补进同一条记录
 		await waitForInstance(child.pid);
 		if (!noOpen) {
-			const opened = openAppWindow(url, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
+			const opened = await openAppWindow(url, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
 			if (opened.mode === "app" && opened.pid) updateWindow(DATA, child.pid, opened.pid);
 			if (opened.mode === "app") console.log(L(`已启动独立桌面窗口（${windowEngineLabel(opened)}）`, `Opened standalone desktop window (${windowEngineLabel(opened)})`));
 		}
@@ -1062,7 +1077,7 @@ async function webCmd(options = {}) {
 				if (existing?.focused) console.log(L(`✓ 发现已在运行的 agent-purge 服务，已切换到已有窗口 → ${url}`, `✓ Found running agent-purge service; focused existing window → ${url}`));
 				else if (existing?.found) console.log(L(`✓ 发现已在运行的 agent-purge 服务，窗口已在任务栏 → ${url}`, `✓ Found running agent-purge service; window is in taskbar → ${url}`));
 				else if (!noOpen) {
-					const res = openAppWindow(url, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
+					const res = await openAppWindow(url, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
 					if (res.mode === "app") console.log(L(`✓ 发现已在运行的 agent-purge 服务，已作为独立桌面窗口打开（${windowEngineLabel(res)}）`, `✓ Found running agent-purge service; opened desktop window (${windowEngineLabel(res)})`));
 					else console.log(L(`✓ 发现已在运行的 agent-purge 服务，已在浏览器中打开：${url}`, `✓ Found running agent-purge service; opened in browser: ${url}`));
 				} else {
@@ -1087,8 +1102,8 @@ async function webCmd(options = {}) {
 		onError: onServerError,
 	});
 	if (!noOpen) {
-		server.once("listening", () => {
-			const res = openAppWindow(`http://127.0.0.1:${server.address().port}`, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
+		server.once("listening", async () => {
+			const res = await openAppWindow(`http://127.0.0.1:${server.address().port}`, { profileDir: windowProfileDir(DATA), nativeExe: nativeWindowExe, confirmClose: closeConfirmText() });
 			if (res.mode === "app" && port !== 0) updateWindow(DATA, process.pid, res.pid);
 			if (res.mode === "app") console.log(`✓ 已作为独立桌面窗口打开（无标签/地址栏，原生客户端体验）`);
 		});
@@ -1255,6 +1270,7 @@ function help() {
    agent-purge arm <h> --slash              只做会话内 /purge
    agent-purge disarm <h>|--all             以上全部撤掉；不带 <h> 就是所有 harness
    agent-purge clean                        按账本撒回所有写入（保留 state 与人设）
+   agent-purge clean --keep-failed          还原不了的旧账本记为跳过（退出码 3），不阻塞卸载
    agent-purge self-uninstall --yes         撤回写入 + 永久删除数据目录（先备份人设）
    agent-purge self-uninstall --dry-run     只预览将撤销和删除的项目
    agent-purge project on|off [<h>…]        项目级：写当前目录的 AGENTS.md / CLAUDE.md
@@ -1315,6 +1331,7 @@ Select once, and every entry point follows.
    agent-purge arm <h> --slash      Enable in-session /purge extension only
    agent-purge disarm <h>|--all     Disable channels and restore original files
    agent-purge self-uninstall --yes Revert writes and delete data directory permanently
+   agent-purge clean --keep-failed Treat unrevertable ledger entries as skipped (exit 3) instead of blocking uninstall
    agent-purge self-uninstall --dry-run  Preview what self-uninstall would remove
    agent-purge project on|off [<h>…] [--dir X]  Manage project-level AGENTS.md / CLAUDE.md blocks
 

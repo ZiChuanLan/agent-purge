@@ -31,6 +31,11 @@ int g_height = 860;
 
 const wchar_t kClass[] = L"AgentPurgeWindow";
 
+struct InstallationActivity {
+	HANDLE mutex = CreateMutexW(nullptr, FALSE, L"agent-purge-desktop-active");
+	~InstallationActivity() { if (mutex) CloseHandle(mutex); }
+};
+
 // 高 DPI：动态取 Win10 的 SetProcessDpiAwarenessContext，mingw 的 user32 声明因 SDK 版本而异。
 // -4 就是 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2（头文件里不一定有这个名字）。
 void EnableDpiAwareness() {
@@ -272,6 +277,7 @@ void ParseArgs(int argc, LPWSTR* argv) {
 } // namespace
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show) {
+	InstallationActivity activity;
 	EnableDpiAwareness();
 	int argc = 0;
 	LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);

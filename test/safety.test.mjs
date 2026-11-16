@@ -7,7 +7,7 @@ import { isolate } from "./isolate.mjs";
 //   3. clean 跑完不重置 armed → 「没有 codebuddy 的 shim」这种条目永远清不掉
 // 全部在临时 HOME 里跑，不碰真实配置。
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -194,4 +194,111 @@ test("永久删除拒绝 HOME 及其上级、大小写别名和目录链接，�
 		assert.equal(clean(alias, { all: true }).ok, false);
 		assert.equal(readFileSync(join(fakeHome, "state.json"), "utf8"), before);
 	} finally { process.env.HOME = oldHome; process.env.USERPROFILE = oldUser; }
+});
+
+test("clean --keep-failed：还原不了的账本只记一笔，不再把卸载永久卡死", () => {
+	const notes = join(dir, "keep-failed");
+	mkdirSync(notes, { recursive: true });
+	const mine = join(notes, "locked.txt");
+	writeFileSync(mine, "我的笔记 A");
+	record(DATA, { kind: "file", harness: "pi", channel: "shim", path: mine, undo: { type: "file-delete" } });
+	writeFileSync(mine, "我的笔记 B —— 用户后来又改了");
+
+	const strict = clean(DATA, {});
+	assert.equal(strict.ok, false, "默认仍然拦住，交给人看");
+	assert.equal(strict.skipped.length, 0);
+
+	const lenient = clean(DATA, { keepFailed: true });
+	assert.equal(lenient.ok, true, "keep-failed 放行卸载");
+	assert.equal(lenient.skipped.length, 1);
+	assert.equal(lenient.skipped[0].what, "ledger:file-delete");
+	assert.equal(readFileSync(mine, "utf8"), "我的笔记 B —— 用户后来又改了", "跳过不等于删别人的文件");
+	assert.equal(listLedger(DATA).length, 1, "账本原地保留：修好后还能重试");
+	assert.ok(lenient.leftovers.some((l) => l.includes("locked.txt")), lenient.leftovers.join(" | "));
+
+	// 账本还原得了的时候 --keep-failed 也不该改变结果
+	cancel(DATA, { kind: "file", path: mine });
+	rmSync(mine, { force: true });
+	const after = clean(DATA, { keepFailed: true });
+	assert.equal(after.ok, true);
+	assert.deepEqual(after.skipped, []);
+});
+
+test("clean --keep-failed：配置损坏仍是硬失败，返回完整结果而不是让 CLI 崩溃", () => {
+	const root = join(dir, "broken-state");
+	mkdirSync(root);
+	writeFileSync(join(root, "state.json"), "{broken");
+	const result = clean(root, { keepFailed: true });
+	assert.equal(result.ok, false);
+	assert.deepEqual(result.skipped, []);
+	assert.match(result.steps[0].detail, /state.json 损坏/);
+	assert.equal(readFileSync(join(root, "state.json"), "utf8"), "{broken");
+});
+
+test("clean --keep-failed：账本损坏时不开始撤通道、不放行卸载", () => {
+	const root = join(dir, "broken-ledger");
+	mkdirSync(root);
+	writeFileSync(join(root, "state.json"), JSON.stringify({ v: 1, armed: { pi: ["shim"] } }));
+	writeFileSync(join(root, "footprints.json"), "{broken");
+	const result = clean(root, { keepFailed: true });
+	assert.equal(result.ok, false);
+	assert.deepEqual(result.skipped, []);
+	assert.equal(stepOf(result, "read-ledger").ok, false);
+	assert.equal(stepOf(result, "pi/shim"), undefined);
+	assert.equal(readFileSync(join(root, "footprints.json"), "utf8"), "{broken");
+});
+
+test("clean --keep-failed：活跃通道的还原冲突仍阻止卸载并保留凭据", () => {
+	const root = join(dir, "active-conflict");
+	mkdirSync(root);
+	writeFileSync(join(root, "state.json"), JSON.stringify({ v: 1, armed: { pi: ["install"] } }));
+	const localPersona = join(root, "persona.md");
+	writeFileSync(localPersona, "PERSONA");
+	const installed = install("pi", { root, active: localPersona });
+	assert.ok(installed.file);
+	const managed = readFileSync(installed.file, "utf8");
+	rmSync(installed.file);
+	mkdirSync(installed.file);
+	try {
+		const result = clean(root, { keepFailed: true });
+		assert.equal(result.ok, false);
+		assert.equal(stepOf(result, "pi/install").ok, false);
+		assert.ok(listLedger(root).length > 0);
+		assert.ok(existsSync(join(root, "stash")));
+	} finally {
+		rmdirSync(installed.file);
+		writeFileSync(installed.file, managed);
+		uninstall("pi", { root });
+	}
+});
+
+test("clean --keep-failed：未知撤销方式不算可忽略的旧账本", () => {
+	const root = join(dir, "unknown-undo");
+	const file = join(dir, "unknown-file.txt");
+	writeFileSync(file, "KEEP");
+	record(root, { kind: "file", harness: "pi", channel: "shim", path: file, undo: { type: "unknown" } });
+	const result = clean(root, { keepFailed: true });
+	assert.equal(result.ok, false);
+	assert.deepEqual(result.skipped, []);
+	assert.equal(readFileSync(file, "utf8"), "KEEP");
+	assert.equal(listLedger(root).length, 1);
+});
+
+test("clean：通道撤销后刷新账本，不重放已销账的用户文件", () => {
+	const root = join(dir, "restored-plugin");
+	mkdirSync(root);
+	const localPersona = join(root, "persona.md");
+	writeFileSync(localPersona, "PERSONA");
+	const plugins = join(dir, ".config", "opencode", "plugins");
+	mkdirSync(plugins, { recursive: true });
+	const file = join(plugins, "agent-purge-v2.ts");
+	const original = "// USER PLUGIN, NOT OWNED\n";
+	writeFileSync(file, original);
+	writeFileSync(join(root, "state.json"), JSON.stringify({ v: 1, armed: { opencode2: ["install"] } }));
+	assert.ok(install("opencode2", { root, active: localPersona }).file);
+	const result = clean(root);
+	assert.equal(result.ok, true, JSON.stringify(result.steps));
+	assert.deepEqual(result.skipped, []);
+	assert.equal(readFileSync(file, "utf8"), original);
+	assert.equal(listLedger(root).length, 0);
 });

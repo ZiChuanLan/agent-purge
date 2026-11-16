@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isolatedEnv } from '../lib/environment.mjs';
@@ -9,7 +9,19 @@ export async function smoke(command, prefix, { cwd, version, serve = true, witho
   const env = isolatedEnv(root);
   if (withoutNode) {
     for (const key of Object.keys(env)) if (key.toUpperCase() === 'PATH') delete env[key];
-    env.PATH = process.platform === 'win32' ? join(env.SystemRoot || env.WINDIR || 'C:\\Windows', 'System32') : '/usr/bin:/bin';
+    if (process.platform === 'win32') {
+      env.PATH = join(env.SystemRoot || env.WINDIR || 'C:\\Windows', 'System32');
+    } else {
+      // Runners may have /usr/bin/node even after setup-node points elsewhere.
+      // Expose only the shell tools required by AppRun, not the host Node installation.
+      const tools = join(root, 'node-free-tools');
+      mkdirSync(tools);
+      for (const name of ['sh', 'which', 'dirname', 'readlink', 'env', 'uname']) {
+        const target = ['/usr/bin', '/bin'].map(dir => join(dir, name)).find(existsSync);
+        if (target) symlinkSync(target, join(tools, name));
+      }
+      env.PATH = tools;
+    }
     const probe = spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', [process.platform === 'win32' ? 'node.exe' : 'node'], { env, encoding: 'utf8', windowsHide: true });
     if (probe.status === 0) throw new Error('独立产物验收的 PATH 仍有 Node');
   }

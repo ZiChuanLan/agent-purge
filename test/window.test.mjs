@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { findChromiumAppBrowser, focusConsoleWindow, nativeWindowAvailable, openAppWindow, prepareWindowProfile, windowProfileDir } from '../lib/window.mjs';
+import { findChromiumAppBrowser, focusConsoleWindow, nativeExitHint, nativeWindowAvailable, nativeWindowLogPath, openAppWindow, openAppWindowWithFallback, prepareWindowProfile, windowProfileDir } from '../lib/window.mjs';
 
 test('missing/headless browser reports a manual URL without an uncaught spawn error', () => {
   const child = Object.assign(new EventEmitter(), { unref() {}, pid: 123 });
@@ -33,14 +33,15 @@ test('openAppWindow passes windowsHide: false so Chromium window is visible (iss
 test('openAppWindow gives the console window a dedicated profile so its pid stays usable (issue #14)', {
   skip: !findChromiumAppBrowser() ? '本机没有 Edge/Chrome，--app 分支不适用' : false,
 }, () => {
+  const profileDir = join(mkdtempSync(join(tmpdir(), 'ap-window-profile-')), 'window-profile');
   let capturedArgs = null;
   const child = Object.assign(new EventEmitter(), { unref() {}, pid: 789 });
   const result = openAppWindow('http://127.0.0.1:12345', {
-    profileDir: 'C:\\Users\\test\\.agent-purge\\window-profile',
+    profileDir,
     spawnProcess: (_cmd, args) => { capturedArgs = args; return child; },
   });
   assert.equal(result.mode, 'app');
-  assert.ok(capturedArgs.includes('--user-data-dir=C:\\Users\\test\\.agent-purge\\window-profile'));
+  assert.ok(capturedArgs.includes(`--user-data-dir=${profileDir}`));
   assert.ok(capturedArgs.includes('--no-first-run'));
   // Edge 的首启不受 --no-first-run 约束，会经 WAM 把系统 Microsoft 账号关联进新 profile
   assert.ok(capturedArgs.includes('--disable-sync'), 'fresh profile should not auto-link the OS Microsoft account');
@@ -109,18 +110,110 @@ test('openAppWindow skips the close prompt when the setting is off', () => {
   assert.equal(captured.includes('--confirm-close'), false);
 });
 
+test('a native host that dies leaves a log and reports why, instead of failing silently (issue #20)', () => {
+  const home = mkdtempSync(join(tmpdir(), 'ap-window-'));
+  const child = Object.assign(new EventEmitter(), { unref() {}, pid: 323 });
+  const errors = [];
+  openAppWindow('http://127.0.0.1:12345', {
+    profileDir: home,
+    nativeExe: 'C:\\app\\agent-purge-window.exe',
+    nativeReady: true,
+    spawnProcess: () => child,
+    onError: error => errors.push(error.message),
+  });
+  child.emit('exit', 0);
+  assert.deepEqual(errors, [], 'a normal close must stay quiet');
+  assert.equal(existsSync(nativeWindowLogPath(home)), false);
+
+  const dead = Object.assign(new EventEmitter(), { unref() {}, pid: 324 });
+  openAppWindow('http://127.0.0.1:12345', {
+    profileDir: home,
+    nativeExe: 'C:\\app\\agent-purge-window.exe',
+    nativeReady: true,
+    spawnProcess: () => dead,
+    onError: error => errors.push(error.message),
+  });
+  dead.emit('exit', 3221225781);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /3221225781/);
+  assert.match(errors[0], /0xC0000135/);
+  const log = readFileSync(nativeWindowLogPath(home), 'utf8');
+  assert.match(log, /exit 3221225781 \(0xc0000135\)/);
+  assert.match(log, /缺少运行库/);
+  assert.equal(nativeExitHint(0), '');
+});
+
 test('nativeWindowAvailable reports false without an exe', () => {
   assert.equal(nativeWindowAvailable(null), false);
   assert.equal(nativeWindowAvailable('C:\\nope\\agent-purge-window.exe'), false);
 });
 
+test('an immediately failing native host falls back and returns the replacement PID (issue #20)', async () => {
+  const profileDir = mkdtempSync(join(tmpdir(), 'ap-window-fallback-'));
+  writeFileSync(join(profileDir, 'window-state.txt'), 'KEEP NATIVE STATE');
+  const calls = [], errors = [];
+  const result = await openAppWindowWithFallback('http://127.0.0.1:12345', {
+    profileDir, nativeExe: 'C:\\app\\agent-purge-window.exe', nativeReady: true,
+    nativeStartupTimeout: 30, onError: error => errors.push(error.message),
+    spawnProcess: (command, args) => {
+      const child = Object.assign(new EventEmitter(), { unref() {}, pid: 800 + calls.length });
+      calls.push({ command, args });
+      if (calls.length === 1) queueMicrotask(() => child.emit('exit', -1073741515));
+      return child;
+    },
+  });
+  assert.equal(calls.length, 2, 'must attempt the native host once, then the browser');
+  assert.notEqual(result.engine, 'webview2');
+  assert.equal(result.pid, 801, 'single-instance registration needs the browser PID, not the dead native PID');
+  assert.match(readFileSync(nativeWindowLogPath(profileDir), 'utf8'), /0xc0000135/);
+  assert.equal(readFileSync(join(profileDir, 'window-state.txt'), 'utf8'), 'KEEP NATIVE STATE');
+  assert.equal(errors.length, 1);
+});
+
+test('a healthy native startup and a normal close do not spawn a second window', async () => {
+  for (const close of [false, true]) {
+    let calls = 0;
+    const result = await openAppWindowWithFallback('http://127.0.0.1:12345', {
+      nativeExe: 'C:\\app\\agent-purge-window.exe', nativeReady: true, nativeStartupTimeout: 5,
+      spawnProcess: () => {
+        calls++;
+        const child = Object.assign(new EventEmitter(), { unref() {}, pid: 900 });
+        if (close) queueMicrotask(() => child.emit('exit', 0));
+        return child;
+      },
+    });
+    assert.equal(result.engine, 'webview2');
+    assert.equal(calls, 1);
+  }
+});
+
+test('native spawn errors are logged before fallback even when the profile does not exist', async () => {
+  const profileDir = join(mkdtempSync(join(tmpdir(), 'ap-window-spawn-')), 'new-profile');
+  let calls = 0;
+  const result = await openAppWindowWithFallback('http://127.0.0.1:12345', {
+    profileDir, nativeExe: 'C:\\app\\agent-purge-window.exe', nativeReady: true,
+    nativeStartupTimeout: 30, onError() {},
+    spawnProcess: () => {
+      const child = Object.assign(new EventEmitter(), { unref() {}, pid: 1000 + calls++ });
+      if (calls === 1) queueMicrotask(() => child.emit('error', new Error('ENOENT')));
+      return child;
+    },
+  });
+  assert.notEqual(result.engine, 'webview2');
+  assert.equal(calls, 2);
+  assert.match(readFileSync(nativeWindowLogPath(profileDir), 'utf8'), /spawn failed: ENOENT/);
+});
+
 test('focusConsoleWindow tells "window is gone" apart from "window exists but stayed behind"', () => {
   const calls = [];
-  const run = (_command, args) => { calls.push(args); return 'AgentPurge.Native\nAGENT_PURGE_WINDOW_FOCUSED\r\n'; };
+  let command, options;
+  const run = (cmd, args, opts) => { command = cmd; options = opts; calls.push(args); return 'AgentPurge.Native\nAGENT_PURGE_WINDOW_FOCUSED\r\n'; };
   assert.deepEqual(focusConsoleWindow({ pid: 4321, profileDir: 'C:\\data\\window-profile' }, { platform: 'win32', run }), { found: true, focused: true });
   assert.match(calls[0].join(' '), /-Command/);
   assert.match(calls[0].join(' '), /4321/);
   assert.match(calls[0].join(' '), /C:\\data\\window-profile/);
+  assert.match(command.replaceAll('\\', '/'), /\/System32\/WindowsPowerShell\/v1\.0\/powershell\.exe$/);
+  assert.equal(Object.keys(options.env).some(key => key.toUpperCase() === 'PSMODULEPATH'), false);
 
   assert.deepEqual(
     focusConsoleWindow({ pid: 4321 }, { platform: 'win32', run: () => 'AGENT_PURGE_WINDOW_UNFOCUSED\n' }),

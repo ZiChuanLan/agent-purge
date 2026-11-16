@@ -404,8 +404,6 @@ function targetRow(h, index = 0, animate = false) {
   const rulesOnly = targetGroup(h) === 'rules';
   const avail = modeAvailability(h);
   const modeLabel = h.mode === 'off' ? pick('已暂停', 'Paused') : (MODE_LABELS[h.mode] || (avail.preferred ? MODE_LABELS[avail.preferred] : MODE_LABELS.replace));
-  const customPersona = h.personaFrom === 'override' ? state.personas.find(p => p.id === h.persona) : null;
-  const metaText = customPersona ? pick(`专属：${personaName(customPersona)}`, `Custom: ${personaName(customPersona)}`) : modeLabel;
 
   const statusLabel = rulesOnly && !on ? pick('项目文件', 'Rule file') : status.label;
   const statusChipClass = status.key === 'on' ? 'is-on' : status.key === 'paused' ? 'is-warn' : status.key === 'failed' ? 'is-bad' : status.key === 'future' ? 'is-future' : '';
@@ -455,7 +453,7 @@ function targetRow(h, index = 0, animate = false) {
       node('div', { class: 'tool-card-meta' },
         node('span', { class: 'tool-card-index', 'aria-hidden': 'true' }, String(index + 1).padStart(2, '0')),
         chip(statusLabel, statusChipClass),
-        node('span', {}, metaText)
+        node('span', {}, modeLabel)
       ),
       node('button', {
         type: 'button', class: 'tool-card-more', 'data-expand': h.id,
@@ -812,7 +810,6 @@ function toolPanel(h) {
         harnessIcon(h.id, 34),
         node('div', {},
           node('h2', {}, harnessTitle(h.id),
-            h.personaFrom === 'override' ? node('span', { class: 'tool-flag is-accent' }, pick('专属', 'Custom')) : null,
             state.defaultsSet && state.defaults.harness === h.id ? node('span', { class: 'tool-flag' }, pick('默认', 'Default')) : null
           ),
           node('p', {}, `${toolSub(h)} · ${installed(h) ? pick('本机已安装', 'Installed') : pick('本机没装', 'Not installed')}`)
