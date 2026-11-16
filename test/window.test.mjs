@@ -212,8 +212,10 @@ test('focusConsoleWindow tells "window is gone" apart from "window exists but st
   assert.match(calls[0].join(' '), /-Command/);
   assert.match(calls[0].join(' '), /4321/);
   assert.match(calls[0].join(' '), /C:\\data\\window-profile/);
-  assert.match(command.replaceAll('\\', '/'), /\/System32\/WindowsPowerShell\/v1\.0\/powershell\.exe$/);
+  assert.match(command.replaceAll('\\', '/'), /\/(?:System32\/WindowsPowerShell\/v1\.0\/powershell|PowerShell\/7\/pwsh)\.exe$/);
   assert.equal(Object.keys(options.env).some(key => key.toUpperCase() === 'PSMODULEPATH'), false);
+  assert.ok(calls[0].at(-1).indexOf('EnumWindows($collect') < calls[0].at(-1).indexOf('Get-CimInstance'),
+    'a known native window must be found before querying WMI');
 
   assert.deepEqual(
     focusConsoleWindow({ pid: 4321 }, { platform: 'win32', run: () => 'AGENT_PURGE_WINDOW_UNFOCUSED\n' }),
