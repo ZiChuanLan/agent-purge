@@ -1584,20 +1584,21 @@ function confirmHarnessArm(id) {
 const onToolsChange = async e => {
   const el = e.target;
   if (el.dataset.hpersona) {
-    const pick = el.value;
+    // 这里不能叫 pick：块级同名声明会把模块级导入的 pick() 遮蔽成字符串，调用时抛 "pick is not a function"
+    const value = el.value;
     operation(async () => {
-      const result = await api('harness', { harness: el.dataset.hpersona, persona: pick || 'follow' });
+      const result = await api('harness', { harness: el.dataset.hpersona, persona: value || 'follow' });
       await refresh();
-      announce(result, pick ? pick(`${harnessTitle(el.dataset.hpersona)} 改用这份人设。`, `${harnessTitle(el.dataset.hpersona)} now uses this persona.`) : pick(`${harnessTitle(el.dataset.hpersona)} 恢复跟随全局人设。`, `${harnessTitle(el.dataset.hpersona)} now follows global persona.`));
+      announce(result, value ? pick(`${harnessTitle(el.dataset.hpersona)} 改用这份人设。`, `${harnessTitle(el.dataset.hpersona)} now uses this persona.`) : pick(`${harnessTitle(el.dataset.hpersona)} 恢复跟随全局人设。`, `${harnessTitle(el.dataset.hpersona)} now follows global persona.`));
     });
     return;
   }
   if (el.dataset.hmode) {
-    const pick = el.value;
+    const value = el.value;
     operation(async () => {
-      const result = await api('harness', { harness: el.dataset.hmode, mode: pick || 'follow' });
+      const result = await api('harness', { harness: el.dataset.hmode, mode: value || 'follow' });
       await refresh();
-      announce(result, pick === 'follow' ? pick(`${harnessTitle(el.dataset.hmode)} 恢复跟随全局力度。`, `${harnessTitle(el.dataset.hmode)} now follows global mode.`) : pick(`${harnessTitle(el.dataset.hmode)} 的力度改为「${MODE_LABELS[pick] || pick}」。`, `${harnessTitle(el.dataset.hmode)} mode set to "${MODE_LABELS[pick] || pick}".`));
+      announce(result, value === 'follow' ? pick(`${harnessTitle(el.dataset.hmode)} 恢复跟随全局力度。`, `${harnessTitle(el.dataset.hmode)} now follows global mode.`) : pick(`${harnessTitle(el.dataset.hmode)} 的力度改为「${MODE_LABELS[value] || value}」。`, `${harnessTitle(el.dataset.hmode)} mode set to "${MODE_LABELS[value] || value}".`));
     });
     return;
   }

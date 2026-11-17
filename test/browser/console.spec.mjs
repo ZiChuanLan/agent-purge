@@ -318,3 +318,31 @@ test('dark mode: follows system, toggles via header & Settings, persists across 
   const state = await (await page.request.get(`${app.url}/api/state`)).json();
   expect(state.settings.theme).toBe('light');
 });
+
+test('per-tool persona and mode selects report success instead of "pick is not a function"', async ({ page, app }) => {
+  // 回归：抽屉里的 change 处理器曾用 `const pick = el.value` 接住下拉值，
+  // 块级声明遮蔽了模块级导入的 i18n pick()，于是写盘成功后拼提示语时抛
+  // TypeError: pick is not a function，用户只看到一条红条、看不到"已改"。
+  await page.locator('#show-all').check();
+  await selectTool(page, 'pi');
+  const persona = page.locator('#panel-pi select[data-hpersona]');
+  await expect(persona).toBeVisible();
+  const personaId = await persona.locator('option').nth(1).getAttribute('value');
+  expect(personaId, 'isolated HOME must expose at least one persona to switch to').toBeTruthy();
+  const personaWrite = page.waitForResponse(r => r.url().includes('/api/harness') && r.request().method() === 'POST');
+  await persona.selectOption(personaId);
+  expect((await personaWrite).ok()).toBe(true);
+  await expect(page.locator('#notice')).toContainText('改用这份人设');
+  await expect(page.locator('#notice')).not.toHaveClass(/error/);
+
+  const mode = page.locator('#panel-pi select[data-hmode]');
+  const modeWrite = page.waitForResponse(r => r.url().includes('/api/harness') && r.request().method() === 'POST');
+  await mode.selectOption('append');
+  expect((await modeWrite).ok()).toBe(true);
+  await expect(page.locator('#notice')).toContainText('的力度改为');
+  await expect(page.locator('#notice')).toHaveClass(/\bgood\b/);
+
+  const state = await (await page.request.get(`${app.url}/api/state`)).json();
+  const pi = state.harnesses.find(h => h.id === 'pi');
+  expect(pi).toMatchObject({ persona: personaId, personaFrom: 'override', mode: 'append', modeFrom: 'override' });
+});
