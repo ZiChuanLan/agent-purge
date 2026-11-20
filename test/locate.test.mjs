@@ -102,6 +102,67 @@ test("scanDrives: 跳过系统目录，找不到就返回空", (t) => {
 	assert.deepEqual(scanDrives(["WorkBuddy.exe"], [dir]), []);
 });
 
+test("fixedDrives: 网络映射盘不参与探测（断线的映射盘会卡 SMB 超时，#22）", async () => {
+	const { localDriveRoots, mappedDriveLetters } = await import("../lib/locate.mjs");
+	// reg query HKCU\Network 的真实形状：子键名就是盘符，值在下一层
+	const regOut = [
+		"HKEY_CURRENT_USER\\Network\\Z",
+		"    ConnectionType    REG_DWORD    0x1",
+		"    RemotePath    REG_SZ    \\\\nas\\share",
+		"HKEY_CURRENT_USER\\Network\\y",
+	].join("\r\n");
+	assert.deepEqual([...mappedDriveLetters(regOut)].sort(), ["Y", "Z"]);
+	assert.deepEqual([...mappedDriveLetters("")], [], "没有 HKCU\\Network 时不该认出任何盘符");
+
+	// 网络盘要在名单里就剔掉：连 existsSync 都不许进，否则整个进程等 SMB 超时
+	const asked = [];
+	const list = localDriveRoots({
+		network: new Set(["X", "Y", "Z"]),
+		slow: new Set(),
+		probe: (root) => {
+			asked.push(root);
+			return root === "C:\\" || root === "X:\\";
+		},
+	});
+	assert.deepEqual(list, ["C:\\"]);
+	for (const letter of ["X", "Y", "Z"]) assert.ok(!asked.includes(`${letter}:\\`), `${letter}: 不能去 existsSync`);
+	assert.equal(asked.length, 21, "其余本地盘仍然逐个探测");
+
+	// 注册表里查不到的会话内映射（net use /persistent:no）第一次仍会等超时：
+	// 量到「这不是本地盘」之后就不再问第二次，缓存过期刷新不会再卡一遍
+	const slow = new Set();
+	const askedSlow = [];
+	const firstSlow = localDriveRoots({
+		network: new Set(),
+		slow,
+		slowAfterMs: 0,
+		probe: (root) => {
+			askedSlow.push(root);
+			return root === "C:\\";
+		},
+	});
+	assert.equal(slow.size, 24, "耗时超过阈值的盘符要记下来");
+	assert.deepEqual(firstSlow, ["C:\\"]);
+	assert.deepEqual(
+		localDriveRoots({ network: new Set(), slow, slowAfterMs: 0, probe: (root) => { askedSlow.push(root); return true; } }),
+		[],
+		"已经量到慢的盘不参与下一轮探测",
+	);
+	assert.equal(askedSlow.length, 24, "第二轮一个盘符都不该再问");
+});
+
+test("fixedDrives: 本机盘符照常列出（过滤网络盘不影响本地盘）", { skip: process.platform !== "win32" }, async (t) => {
+	const { fixedDrives } = await import("../lib/locate.mjs");
+	const saved = process.env.AGENT_PURGE_DRIVES;
+	delete process.env.AGENT_PURGE_DRIVES;
+	t.after(() => {
+		if (saved === undefined) delete process.env.AGENT_PURGE_DRIVES;
+		else process.env.AGENT_PURGE_DRIVES = saved;
+	});
+	const sys = `${process.env.SystemDrive || "C:"}\\`;
+	assert.ok(fixedDrives().includes(sys), `应列出系统盘 ${sys}`);
+});
+
 test("locate: 什么都没找到时返回 null", () => {
 	assert.equal(locate({ names: ["Nope"], exe: ["Nope.exe"], folder: ["Nope"] }, sources()), null);
 });
