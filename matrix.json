@@ -651,23 +651,23 @@
       "hotSwitch": false,
       "patch": false,
       "launcher": "~/.gemini/config/AGENTS.md 托管块（App 与 CLI 共用，落 systemInstruction 的 <user_rules>，无需手动选 agent）",
-      "defaultSystemChars": 15824,
-      "purgedSystemChars": 16290,
-      "measuredVersion": "1.5.7",
-      "verify": "隔离 HOME 真实二进制抓包：off/strict/replace/append 四模式均捕获主请求，marker 全落 systemInstruction（system 15378 → 15895/15844/15843 字），<user_rules> 位于 </identity> 之后；真模型三问均自称新人设；注意 purged 字数高于 default，这一家是追加型（宿主身份仍在 system 里）",
-      "residue": "<identity> 段完整保留（\"You are Antigravity, ...\"）：purged 15895 > default 15378，净增 517 字，是 append 不是替换；真删只有二进制等长替换或手动选自定义 agent",
+      "defaultSystemChars": 16440,
+      "purgedSystemChars": 16906,
+      "measuredVersion": "1.5.12",
+      "verify": "隔离 HOME 真实二进制抓包（CLI 1.5.12；桌面 App 2.33.0 的 language_server 里仍有同一套 ~/.gemini/config 规则加载字符串，静态线索、未做 GUI 抓包）：off/strict/replace/append 四模式均捕获主请求，marker 全落 systemInstruction（system 16440 → 16933/16906/16905 字），<user_rules> 位于 </identity> 之后；注意 purged 字数高于 default，这一家是追加型（宿主身份仍在 system 里）",
+      "residue": "<identity> 段完整保留（\"You are Antigravity, ...\"）：purged 16906 > default 16440，净增 466 字，是 append 不是替换；真删只有二进制等长替换或手动选自定义 agent",
       "preferredMode": "replace",
-      "modesNote": "四种模式都只是追加：strict / replace / append 分别净增 517 / 466 / 465 字，没有一个删得掉宿主的 <identity>。想真删只能走 agents/*.md + --agent，或二进制等长替换",
+      "modesNote": "off 是基线；strict / replace / append 三种安装模式都只是追加：分别净增 493 / 466 / 465 字，没有一个删得掉宿主的 <identity>。想真删只能走 agents/*.md + --agent，或二进制等长替换。规则另有体积预算（1.5.12 上观测，同一份纯 CJK 填充样本）：8000 字符整段注入，10000 字符被换成 <truncated N bytes> 占位（人设静默丢失），settings.json 的 rulesTokenBudget 不生效",
       "safety": {
         "off": 0,
         "purged": 0,
-        "note": "15824 字里零安全/拒答条款：只有 <identity>、<guidelines>、<artifacts>、<subagents>、<skills> 与工具说明；purge 无对象可删"
+        "note": "16440 字里零安全/拒答条款：只有 <identity>、<guidelines>、<artifacts>、<subagents>、<skills> 与工具说明；purge 无对象可删"
       },
       "modesChars": {
-        "off": 15824,
-        "strict": 16317,
-        "replace": 16290,
-        "append": 16289
+        "off": 16440,
+        "strict": 16933,
+        "replace": 16906,
+        "append": 16905
       },
       "replaceScope": "append"
     },

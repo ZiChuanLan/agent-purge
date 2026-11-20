@@ -31,7 +31,7 @@ What purge removes depends on where the host writes its safety clauses. The coun
 | Qwen / Kimi / Continue / Goose | 19,403 / 10,357 / 1,318 / 7,387 | 0 | 0 | No refusal clauses in the system prompt; Qwen's "Security and Safety Rules" is coding hygiene (explain dangerous commands, don't commit secrets), not content policy |
 | Kilo / OpenCode 1.x / OpenCode 2.x | 13,717 / 14,236 / 12,888 | 0 | 0 | The only safety-looking hit is the reverse case — "if you can't help, offer alternatives, don't preach" |
 | Codex / Grok / omp / pi | 23,107 / 5,121 / 10,588 / 2,398 | 0 | 0 | No safety clauses in the system prompt |
-| Antigravity | 15,824 | 0 | 0 | Only `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>`; nothing to remove |
+| Antigravity | 16,440 | 0 | 0 | Only `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>`; nothing to remove |
 | Crush | 22,180 | 0 | 0 | Persona goes through the install channel (`CRUSH.md` managed block); no whole-prompt entry point. The host prompt is client-side (the developer entry of `input[]`, starting "You are Crush…"): 26 tool definitions plus 22,180 characters of system text. No four-mode numbers — only this clean `off` capture |
 | Kiro / Auggie / zcode | — | not measured | not measured | Kiro 3.3.0 stops at `Not logged in` before any request, so pointing `HTTPS_PROXY` at loopback proves nothing; the binary has no `KIRO_ENDPOINT` / `KIRO_BASE_URL` / custom-provider override and always talks to AWS CodeWhisperer. Auggie's client sends a 0-character `system_prompt` and an empty `rules` array in `off` mode — the host prompt is assembled server-side. zcode ships only as an Electron desktop app whose main process ignores `HTTP_PROXY`; capturing it needs a system-wide MITM root certificate, which is outside this project's evidence scope |
 
@@ -57,7 +57,7 @@ Counting rule: one line = one independent guardrail directive. Strong signals on
 | Kimi Code | 2.6.2 | `--agent-file` | New session | Whole-system | 10,357 → 114 |
 | Goose | 1.58.1 | `session/run --system` | New session | Append | 7,387 → 7,504 |
 | Kilo Code | @kilocode/cli 7.8.18 | `code.md` / AGENTS.md | New session | Identity-only (`soul()` still prepends "You are Kilo") | 13,717 → 5,353 |
-| Antigravity (agy) | 1.5.7 | `~/.gemini/config/AGENTS.md` | New session | Append | 15,824 → 16,290 |
+| Antigravity (agy) | 1.5.12 | `~/.gemini/config/AGENTS.md` | New session | Append | 16,440 → 16,906 |
 | Auggie CLI | 0.37.1 | `--override-system-prompt` / `--rules` | New session | Client field only | Client sends 0 chars in `off` |
 | Kiro CLI | 3.3.0 | `--agent` / custom agent | New session | Whole-system | not measured |
 | Crush | v0.101.0 | `CRUSH.md` / AGENTS.md | New session | Append | 22,180 → 22,180 |

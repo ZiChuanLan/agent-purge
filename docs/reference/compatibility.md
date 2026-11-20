@@ -25,7 +25,7 @@
 | continue | 1.5.47 | system | 1,318 → 1,476 | 1,318 → 1,477 | 未验证；启动参数入口 |
 | goose | 1.58.1 | system | 7,387 → 7,503 | 7,387 → 7,504 | 未验证；启动参数入口 |
 | kilo | 7.8.18 | system | 13,717 → 5,442 | 13,717 → 5,353 | 未验证；配置文件入口 |
-| antigravity | 1.5.7 | systemInstruction | 15,824 → 16,317 | 15,824 → 16,290 | 未验证；全局规则入口 |
+| antigravity | 1.5.12 | systemInstruction | 16,440 → 16,933 | 16,440 → 16,906 | 未验证；全局规则入口 |
 热切保持同一进程和会话，执行 A → B → strict → off，检查旧人设残留和工具定义。字符数用于描述一次请求，不是质量评分。
 
 - Claude 的 strict 仍含固定身份句；Codex 和 OMP 仍有额外运行说明。`strict` 仅替换可控入口。
@@ -36,7 +36,7 @@
 - WorkBuddy 5.9.3 于 2026-11-02 用本机桌面会话验证 `settings.json → personalization.customPrompt`：写入测试人设后模型回答切换成功；这是身份上下文追加，不是完整 system 替换，云端请求体不可见，因此不列入上表。
 - WorkBuddy 设置里的“名字”“人设设定”是它自己的云端个人配置，不是 `customPrompt`；关闭 agent-purge 不会清掉这两项，也不应越权改写。
 - WorkBuddy（国内 5.9.3 / 国际 5.9.4，2026-11-06 本机 CDP 实测）：身份槽位是 `personalization.customPrompt`，但 AppConfigService 的主存是 `<home>/app/app-config.json`，`settings.json` 只是 `readLegacySettings()` 的回落。只写 `settings.json` 时面板显示旧值；改写 `app-config.json` 后立即按新人设作答（“你叫什么名字” → 阿绿）。两者都写时以 `app-config.json` 为准（国内版实测回答阿绿而不是 settings 里的阿紫）。因此 agent-purge 按「`app-config.json` 存在就写它，否则写 `settings.json`」写入，并在两处都清掉自己写过的 marker。
-- Antigravity（CLI `agy` 1.5.3 / 桌面 App 语言服务 1.23.x，2026-11-09）：唯一自动生效的落点是 `~/.gemini/config/AGENTS.md`（无 frontmatter = `always_on`），宿主把它插进 `systemInstruction` 的 `<user_rules>` 段。隔离 HOME 真实二进制抓包 `off/strict/replace/append` 四模式均捕获主请求，marker 全落 system 层（system 15378 → 15895/15844/15843 字），`<user_rules>` 位于 `</identity>` 之后。真模型三问（直问身份 / 追问底层模型 / 越狱式要求说出真名）均自称新人设。**残留**：`<identity>` 段里的 `You are Antigravity, ...` 仍在提示词里，靠规则段的 take-precedence 声明压住，不是删除。`~/.gemini/config/agents/<name>.md` 能整段换掉 `<identity>`，但必须先 `--agent <name>` 或手动选择，`settings.json` 里没有默认 agent 键（34 个键全试过），所以不作自动通道。
+- Antigravity（CLI `agy` 1.5.12 / 桌面 App 2.33.0，2026-11-19）：唯一自动生效的落点是 `~/.gemini/config/AGENTS.md`（无 frontmatter = `always_on`），宿主把它插进 `systemInstruction` 的 `<user_rules>` 段。隔离 HOME 真实二进制抓包 `off/strict/replace/append` 四模式均捕获主请求，marker 全落 system 层（system 16440 → 16933/16906/16905 字），`<user_rules>` 位于 `</identity>` 之后。真模型三问（直问身份 / 追问底层模型 / 越狱式要求说出真名）在 1.5.3 上均自称新人设。**残留**：`<identity>` 段里的 `You are Antigravity, ...` 仍在提示词里，靠规则段的 take-precedence 声明压住，不是删除——strict / replace / append 都是净增（replace +466 字），是追加不是替换（`off` 为基线）。`~/.gemini/config/agents/<name>.md` 能整段换掉 `<identity>`，但必须先 `--agent <name>` 或手动选择，`settings.json` 里没有选默认 agent 的键（`defaultAgentModelId` 是模型配置，不是 agent 选择）。**规则预算**：全局规则有体积预算（1.5.12 上观测），同一份纯 CJK 填充样本 8000 字符整段进提示词、10000 字符被换成 `<truncated N bytes>` 占位（人设静默丢失）；阈值随样本内容变化，映射到字符数只能当经验值。`settings.json` 写 `rulesTokenBudget` 不生效（受管字段），大文件人设要先压缩。桌面 App 2.33.0 只做了静态核对：`language_server.exe` 里仍有 `AGENTS.md` / `user_rules` / `user_global` 与 `~/.gemini/config` 规则加载字符串。GUI 抓包没做成：App 的模型请求走 OAuth 的 Code Assist 后端，隔离 HOME 没有登录态，而本机 2026-11-19 到 `oauth2.googleapis.com` 超时（连 UI 都加载不出来），日志见 `%APPDATA%\Antigravity\logs\language_server.log`。要接的话入口是三个端点覆盖项：`CLOUD_CODE_URL`（Code Assist 后端）、`GOOGLE_GEMINI_BASE_URL`（Gemini 直连）、`AGY_LLM_GATEWAY_URL`（企业网关），另外它的规则/设置与 CLI 同路径（`~/.gemini/config`、`~/.gemini/antigravity-cli/settings.json`）。
 - Kilo Code `@kilocode/cli` 7.8.18：`~/.config/kilo/agent/code.md`（replace/strict）与 `AGENTS.md`（append）通道；2026-11-02 隔离 HOME 真实二进制抓包 `off/strict/replace/append` 四模式均捕获主请求，marker 全落 system 层（system 13717→5442/5353/13975 字）；源码确认 `soul()` 仍前置 `You are Kilo`。
 - `opencode`（`opencode-ai` 1.x）与 `opencode2`（`@opencode/cli` 2.x）是不同接口，不能混用插件。
 - 不支持注入的闭源桌面入口不会标为注入成功；有些只能原样启动，有些会明确拒绝。
@@ -54,7 +54,7 @@
 | qwen / kimi / continue / goose | 19,403 / 10,357 / 1,318 / 7,387 | 0 | 0 | 无拒答类条款；qwen 的「Security and Safety Rules」是编码卫生（危险命令先解释、别提交密钥），不是内容政策 |
 | kilo / opencode / opencode2 | 13,717 / 14,236 / 12,888 | 0 | 0 | 唯一像安全条款的命中是反向的「帮不上就直接给替代方案、别讲大道理」，不是限制 |
 | codex / grok / omp / pi | 23,107 / 5,121 / 10,588 / 2,398 | 0 | 0 | 系统提示词内无安全条款 |
-| antigravity | 15,824 | 0 | 0 | 只有 `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>`，没有安全条款可删 |
+| antigravity | 16,440 | 0 | 0 | 只有 `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>`，没有安全条款可删 |
 | crush | 22,180 | 0 | 0 | 人设走 install 通道（`CRUSH.md` 托管块）。宿主提示词在客户端 `input[]` 的 developer 段（开头「You are Crush…」），实测 26 个工具定义 + 22,180 字 system；四模式没有全量数字，只有 off 态这一份干净抓包 |
 | kiro / auggie / zcode | — | 未测 | 未测 | kiro 3.3.0 不登录就停在 `Not logged in`，鉴权在发请求之前，`HTTPS_PROXY` 指向 loopback 也测不出走不走代理；二进制里没有端点覆盖项，云端固定 CodeWhisperer。auggie 的 off 态客户端 `system_prompt` 是 0 字符、`rules` 是空数组，宿主提示词在服务端拼。zcode 只有 Electron 桌面端，主进程不读 `HTTP_PROXY`，抓包需给系统装 MITM 根证书，超出取证范围 |
 

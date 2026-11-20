@@ -32,7 +32,7 @@
 | Qwen / Kimi / Continue / Goose | 19,403 / 10,357 / 1,318 / 7,387 | 0 | 0 | 系统提示词里没有拒答类条款；Qwen 的「Security and Safety Rules」是编码卫生（危险命令先解释、别提交密钥），不是内容政策 |
 | Kilo / OpenCode 1.x / OpenCode 2.x | 13,717 / 14,236 / 12,888 | 0 | 0 | 唯一像安全条款的命中是反向的「帮不上就直接给替代方案、别讲大道理」，不是限制 |
 | Codex / Grok / omp / pi | 23,107 / 5,121 / 10,588 / 2,398 | 0 | 0 | 系统提示词内无安全条款 |
-| Antigravity | 15,824 | 0 | 0 | 只有 `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>`，没有安全条款可删 |
+| Antigravity | 16,440 | 0 | 0 | 只有 `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>`，没有安全条款可删 |
 | Crush | 22,180 | 0 | 0 | 人设走 install 通道（`CRUSH.md` 托管块），没有整份替换入口。宿主提示词在客户端（`input[]` 的 developer 段，开头是「You are Crush…」），实测 26 个工具定义 + 22,180 字 system；四模式没有全量数字，只有 off 态这一份干净抓包 |
 | Kiro / Auggie / zcode | — | 未测 | 未测 | Kiro 3.3.0 不登录就停在 `Not logged in`，鉴权在发请求之前，把 `HTTPS_PROXY` 指向 loopback 也测不出走不走代理；二进制里没有 `KIRO_ENDPOINT` / `KIRO_BASE_URL` / custom-provider 一类端点覆盖项，云端固定 AWS CodeWhisperer。Auggie 的 off 态客户端 `system_prompt` 是 0 字符、`rules` 是空数组——宿主提示词在服务端拼，本地看不到。zcode 只有桌面端（Electron），主进程不读 `HTTP_PROXY`，抓包要给系统装 MITM 根证书，不在取证范围内 |
 **结论**：内置护栏真实存在的只有 CodeBuddy、Claude、Qoder 和 DSH。
@@ -58,7 +58,7 @@
 | Kimi Code | 2.6.2 | `--agent-file` | 需新会话 | 整份替换 | 10,357 → 114 |
 | Goose | 1.58.1 | `session/run --system` | 需新会话 | 追加 | 7,387 → 7,504 |
 | Kilo Code | @kilocode/cli 7.8.18 | 配置覆盖 (`code.md`) / AGENTS.md | 需新会话 | 只换身份段（`soul()` 仍前置 "You are Kilo"） | 13,717 → 5,353 |
-| Antigravity (agy) | 1.5.7 | 全局规则 (`~/.gemini/config/AGENTS.md`) | 需新会话 | 追加 | 15,824 → 16,290 |
+| Antigravity (agy) | 1.5.12 | 全局规则 (`~/.gemini/config/AGENTS.md`) | 需新会话 | 追加 | 16,440 → 16,906 |
 | Auggie CLI | 0.37.1 | `--override-system-prompt` / `--rules` | 需新会话 | 只换客户端字段 | 客户端 off 态发 0 字 |
 | Kiro CLI | 3.3.0 | `--agent` / Custom Agent | 需新会话 | 整份替换 | 未测字数 |
 | Crush | v0.101.0 | 全局规则 (`CRUSH.md`) / AGENTS.md | 需新会话 | 追加 | 22,180 → 22,180 |

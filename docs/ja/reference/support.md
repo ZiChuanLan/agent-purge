@@ -31,7 +31,7 @@
 | Qwen / Kimi / Continue / Goose | 19,403 / 10,357 / 1,318 / 7,387 | 0 | 0 | system prompt に拒否条項なし。Qwen の「Security and Safety Rules」はコーディング衛生（危険なコマンドの説明、秘密情報をコミットしない）で、コンテンツポリシーではない |
 | Kilo / OpenCode 1.x / OpenCode 2.x | 13,717 / 14,236 / 12,888 | 0 | 0 | 唯一の該当は逆方向の「助けられないなら代替案を出し、説教するな」 |
 | Codex / Grok / omp / pi | 23,107 / 5,121 / 10,588 / 2,398 | 0 | 0 | system prompt 内にセーフティ条項なし |
-| Antigravity | 15,824 | 0 | 0 | `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>` のみ。削除対象が存在しない |
+| Antigravity | 16,440 | 0 | 0 | `<identity>` / `<guidelines>` / `<artifacts>` / `<subagents>` / `<skills>` のみ。削除対象が存在しない |
 | Crush | 22,180 | 0 | 0 | ペルソナは install チャネル（`CRUSH.md` 管理ブロック）経由で、全体置換の入口はない。ホストプロンプトはクライアント側（`input[]` の developer 要素、冒頭は「You are Crush…」）にあり、ツール定義 26 個 + system 22,180 文字を実測。4 モードの全数値はなく、この `off` のクリーンなキャプチャのみ |
 | Kiro / Auggie / zcode | — | 未測定 | 未測定 | Kiro 3.3.0 は `Not logged in` でリクエストを一切送らないため、`HTTPS_PROXY` を loopback に向けてもプロキシ経由かどうかは判定できない。バイナリに `KIRO_ENDPOINT` / `KIRO_BASE_URL` / custom-provider の上書き項目はなく、常に AWS CodeWhisperer。Auggie の `off` はクライアントの `system_prompt` が 0 文字・`rules` が空配列で、ホストプロンプトはサーバー側で組み立てられる。zcode は Electron デスクトップ版のみで、メインプロセスは `HTTP_PROXY` を読まない。キャプチャには OS の信頼ストアへの MITM ルート証明書導入が必要で、本プロジェクトの証拠取得範囲外 |
 
@@ -58,7 +58,7 @@
 | Kimi Code | 2.6.2 | `--agent-file` | 新規セッション | 全体置換 | 10,357 → 114 |
 | Goose | 1.58.1 | `session/run --system` | 新規セッション | 追記 | 7,387 → 7,504 |
 | Kilo Code | @kilocode/cli 7.8.18 | `code.md` / AGENTS.md | 新規セッション | 身元のみ置換（`soul()` が "You are Kilo" を前置） | 13,717 → 5,353 |
-| Antigravity (agy) | 1.5.7 | `~/.gemini/config/AGENTS.md` | 新規セッション | 追記 | 15,824 → 16,290 |
+| Antigravity (agy) | 1.5.12 | `~/.gemini/config/AGENTS.md` | 新規セッション | 追記 | 16,440 → 16,906 |
 | Auggie CLI | 0.37.1 | `--override-system-prompt` / `--rules` | 新規セッション | クライアント側フィールドのみ | クライアントは off で 0 文字 |
 | Kiro CLI | 3.3.0 | `--agent` / カスタムエージェント | 新規セッション | 全体置換 | 未測定 |
 | Crush | v0.101.0 | `CRUSH.md` / AGENTS.md | 新規セッション | 追記 | 22,180 → 22,180 |
