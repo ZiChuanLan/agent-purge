@@ -23,6 +23,7 @@ function sandbox(t) {
 		ProgramData: process.env.ProgramData,
 		PUBLIC: process.env.PUBLIC,
 		AGENT_PURGE_DRIVES: process.env.AGENT_PURGE_DRIVES,
+		AGENT_PURGE_APP_DIRS: process.env.AGENT_PURGE_APP_DIRS,
 		PI_DESKTOP_DATA_DIR: process.env.PI_DESKTOP_DATA_DIR,
 		PI_DESKTOP_AGENT_DIR: process.env.PI_DESKTOP_AGENT_DIR,
 	};
@@ -37,6 +38,7 @@ function sandbox(t) {
 	process.env.ProgramData = join(root, "ProgramData");
 	process.env.PUBLIC = join(root, "Public");
 	process.env.AGENT_PURGE_DRIVES = join(root, "no-drive");
+	process.env.AGENT_PURGE_APP_DIRS = join(root, "no-apps");
 	process.env.PATH = "";
 	for (const key of ["PI_DESKTOP_DATA_DIR", "PI_DESKTOP_AGENT_DIR"]) delete process.env[key];
 	t.after(() => {

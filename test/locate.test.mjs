@@ -21,7 +21,8 @@ function makeLnk(path, target) {
 }
 
 function sources(extra = {}) {
-	return { home: "C:\\Users\\t", local: "C:\\Users\\t\\AppData\\Local", roaming: "C:\\Users\\t\\AppData\\Roaming", drives: [], shortcuts: new Map(), entries: [], ...extra };
+	// appDirs 默认给空数组：macOS 上 /Applications 是绝对路径，不显式隔离就会读到真机安装
+	return { home: "C:\\Users\\t", local: "C:\\Users\\t\\AppData\\Local", roaming: "C:\\Users\\t\\AppData\\Roaming", drives: [], shortcuts: new Map(), entries: [], appDirs: [], ...extra };
 }
 
 test("locate: 解析 .lnk 的 LocalBasePath（装在任何盘都指得对）", (t) => {
