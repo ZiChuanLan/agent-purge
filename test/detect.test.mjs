@@ -183,6 +183,24 @@ test("detect: 命令在就不是残留", (t) => {
 	assert.equal(detect().opencode.residueOnly, false);
 });
 
+test("detect: DSH NEXT 桌面版（D:\\DSH-NEXT\\DSH NEXT\\DSH NEXT.exe）不算只剩残留（#24）", (t) => {
+	const home = sandbox(t);
+	const profile = join(home, ".dsh", "profiles", "desktop");
+	mkdirSync(profile, { recursive: true });
+	writeFileSync(join(profile, "package.json"), "{}\n", "utf8");
+	// anywhere-labs/dsh-desktop 的 dsh-desktop-next：productName "DSH NEXT"、NSIS 允许自选目录
+	const drive = join(dirname(home), "drive");
+	const install = join(drive, "DSH-NEXT", "DSH NEXT");
+	mkdirSync(install, { recursive: true });
+	writeFileSync(join(install, "DSH NEXT.exe"), "", "utf8");
+	process.env.AGENT_PURGE_DRIVES = drive;
+
+	const dsh = detect().dsh;
+	assert.equal(dsh.install, install);
+	assert.equal(dsh.residueOnly, false);
+	assert.equal(dsh.found, true);
+});
+
 test("detect: 什么都没装的家既不是装上也不是残留", (t) => {
 	sandbox(t);
 	const crush = detect().crush;
