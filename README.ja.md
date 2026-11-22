@@ -131,7 +131,7 @@ agent-purge status
 `arm <h>` は利用可能な常驻、shim、slash チャネルをまとめて有効化します。プロジェクトチャネルはディレクトリごとに個別管理します。
 
 ## 対応エージェント
-**一言で**: system prompt 全体の入口を持つホスト（Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）は本当に置換します。Claude と Kilo は残留あり。Antigravity、Crush、Continue、Auggie、Goose、zcode は追記のみで、元の身元がプロンプトに残ります。
+**一言で**: system prompt 全体の入口を持つホスト（Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）は本当に置換します。WorkBuddy 5.11.3 では実際の system prompt がプラグインキャッシュ（`~/.workbuddy/plugins/cache/workbuddy-builtin/` の `welcomemode-*/prompt.tpl` と `interactionmode-*/fragments/*.md`）にあり、書き換えると反映されます。インストール先 `resources/templates/` のメインプロンプトはデスクトップ版では読まれません。Claude と Kilo は残留あり。Antigravity、Crush、Continue、Auggie、Goose、zcode は追記のみで、元の身元がプロンプトに残ります。
 
 チャネル、ホットスイッチのタイミング、実測値、内蔵セーフティ条項、残留はドキュメントサイトにまとめています：
 

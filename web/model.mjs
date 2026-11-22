@@ -148,11 +148,11 @@ const PURGE_EFFECTS_ZH = {
 		typeLabel: '配置接管',
 		safetyLevel: 'safe',
 		items: [
-			'按模板剥离「You are WorkBuddy」等产品身份行（未抓包测字数）',
-			'收起内容政策与强制拒答条款',
-			'收起高危目录的递归操作禁令',
-			'同步 app-config.json 里的自定义指令',
+			'系统提示词写插件缓存：welcomemode-*/prompt.tpl 与 interactionmode-*/fragments（5.11.3 桌面端哨兵实测生效）',
+			'行为片段只追加，不抹掉工具与工作流说明',
+			'身份上下文同步到 personalization.customPrompt（app-config.json 或 settings.json）',
 			'改动前留原字节快照，关闭时逐位还原',
+			'WorkBuddy 升级会换缓存版本目录，升级后需重新启用一次',
 		],
 	},
 	'workbuddy-ai': {
@@ -160,11 +160,11 @@ const PURGE_EFFECTS_ZH = {
 		typeLabel: '配置接管',
 		safetyLevel: 'safe',
 		items: [
-			'按模板剥离「You are WorkBuddy」等产品身份行（未抓包测字数）',
-			'收起内容政策与强制拒答条款',
-			'收起高危目录的递归操作禁令',
-			'同步 app-config.json 里的自定义指令',
+			'系统提示词写插件缓存（国际版按 ~/.workbuddy-ai/plugins/cache/workbuddy-builtin）',
+			'身份上下文同步到 personalization.customPrompt（国际版以 app-config.json 为主）',
+			'行为片段只追加，不抹掉工具与工作流说明',
 			'改动前留原字节快照，关闭时逐位还原',
+			'升级后缓存版本目录会变，需重新启用一次',
 		],
 	},
 	dsh: {
@@ -308,11 +308,11 @@ const PURGE_EFFECTS_EN = {
 		typeLabel: 'Config',
 		safetyLevel: 'safe',
 		items: [
-			'Strips product identity lines such as "You are WorkBuddy" from templates',
-			'Collapses content policy and forced refusal clauses',
-			'Collapses recursive operation bans on sensitive directories',
-			'Syncs custom instructions in app-config.json',
+			'Writes the live system prompt into the plugin cache (welcomemode-*/prompt.tpl + interactionmode-*/fragments); marker-verified on 5.11.3',
+			'Appends to behavior fragments instead of wiping tool and workflow notes',
+			'Syncs identity context through personalization.customPrompt (app-config.json or settings.json)',
 			'Saves a byte-level snapshot before editing; restores cleanly when disabled',
+			'Upgrades rotate the cache version directory, so re-enable after an update',
 		],
 	},
 	'workbuddy-ai': {
@@ -320,11 +320,11 @@ const PURGE_EFFECTS_EN = {
 		typeLabel: 'Config',
 		safetyLevel: 'safe',
 		items: [
-			'Strips product identity lines such as "You are WorkBuddy" from templates',
-			'Collapses content policy and forced refusal clauses',
-			'Collapses recursive operation bans on sensitive directories',
-			'Syncs custom instructions in app-config.json',
+			'Writes the live system prompt into the plugin cache (~/.workbuddy-ai/plugins/cache/workbuddy-builtin)',
+			'Syncs identity context through personalization.customPrompt (app-config.json first)',
+			'Appends to behavior fragments instead of wiping tool and workflow notes',
 			'Saves a byte-level snapshot before editing; restores cleanly when disabled',
+			'Upgrades rotate the cache version directory, so re-enable after an update',
 		],
 	},
 	dsh: {

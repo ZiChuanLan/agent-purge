@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { CORE_TEMPLATES, installWorkbuddy, installWorkbuddyPrompt, patchTemplateContent, uninstallWorkbuddy, uninstallWorkbuddyPrompt, workbuddyActiveFile, workbuddyPromptBlocked, workbuddySettingsFile } from "../lib/workbuddy.mjs";
+import { dirname, join } from "node:path";
+import { CORE_TEMPLATES, installWorkbuddy, installWorkbuddyPrompt, installWorkbuddySystemPrompt, patchTemplateContent, uninstallWorkbuddy, uninstallWorkbuddyPrompt, uninstallWorkbuddySystemPrompt, workbuddyActiveFile, workbuddyPromptBlocked, workbuddySettingsFile, workbuddySystemPromptState } from "../lib/workbuddy.mjs";
 
 test("workbuddy: patchTemplateContent in strict/replace/append modes", () => {
 	const original = `This conversation is powered by {{ modelName }}\n\nYour main goal is to follow the USER's instructions...\nYou are WorkBuddy.\n{{ WorkbuddyMemory_1 }}\n{{ UserInstructionsContent }}\n`;
@@ -291,6 +291,88 @@ test("workbuddy-ai: 上一版写进 settings.json 的块，重装后从 settings
 	} finally {
 		if (previous === undefined) delete process.env.WORKBUDDY_AI_CONFIG_DIR;
 		else process.env.WORKBUDDY_AI_CONFIG_DIR = previous;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+// ── 插件 cache 通道：WorkBuddy 桌面端真正读取的系统提示词 ──────────────
+const CACHE_VERSION = "5.11.3-wb.43806934.gecace0f7.ha395516167d4";
+const CACHE_OLD_VERSION = "5.9.3-wb.42398134.gd4692421.h480e8d1fee0f";
+
+function makePluginCache(home) {
+	const root = join(home, "plugins", "cache", "workbuddy-builtin");
+	const promptTpl = join(root, "welcomemode-work", CACHE_VERSION, "prompt.tpl");
+	const fragment = join(root, "interactionmode-craft", CACHE_VERSION, "fragments", "interaction.md");
+	const oldPrompt = join(root, "welcomemode-work", CACHE_OLD_VERSION, "prompt.tpl");
+	for (const file of [promptTpl, fragment, oldPrompt]) mkdirSync(dirname(file), { recursive: true });
+	const promptText = `This conversation is powered by {{ modelName }}\n\nYou are {{ productName }}, a powerful AI assistant.\n{% include "prompt-common/fragments/memory-context.md" %}\n`;
+	const fragmentText = "# Interaction\n\nBe direct and concrete.\n";
+	const oldText = "OLD VERSION PROMPT — 升级前的副本\n";
+	writeFileSync(promptTpl, promptText, "utf8");
+	writeFileSync(fragment, fragmentText, "utf8");
+	writeFileSync(oldPrompt, oldText, "utf8");
+	// 旧版本目录带 .orphaned_at：必须被跳过
+	writeFileSync(join(root, "welcomemode-work", CACHE_OLD_VERSION, ".orphaned_at"), "2026-11-20T00:00:00.000Z\n", "utf8");
+	return { root, promptTpl, fragment, oldPrompt, promptText, fragmentText, oldText };
+}
+
+test("workbuddy: 插件 cache 系统提示词通道 install/uninstall/replace", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-wb-cache-"));
+	const apHome = join(dir, "ap-data");
+	const home = join(dir, ".workbuddy");
+	const previous = process.env.WORKBUDDY_CONFIG_DIR;
+	process.env.WORKBUDDY_CONFIG_DIR = home;
+	const cache = makePluginCache(home);
+	try {
+		const installed = installWorkbuddySystemPrompt(apHome, { personaText: "AP_CACHE_PERSONA", mode: "replace" });
+		assert.equal(installed.status, "installed");
+		assert.ok(installed.count >= 1, "至少写入一个系统提示词文件");
+
+		const promptAfter = readFileSync(cache.promptTpl, "utf8");
+		assert.match(promptAfter, /agent-purge:workbuddy-cache/);
+		assert.match(promptAfter, /AP_CACHE_PERSONA/);
+		assert.doesNotMatch(promptAfter, /You are \{\{ productName \}\}/, "replace 模式整份替换主系统提示词");
+
+		const fragmentAfter = readFileSync(cache.fragment, "utf8");
+		assert.match(fragmentAfter, /Be direct and concrete/, "行为片段保留原文");
+		assert.match(fragmentAfter, /AP_CACHE_PERSONA/);
+
+		assert.equal(readFileSync(cache.oldPrompt, "utf8"), cache.oldText, "带 .orphaned_at 的旧版本目录不碰");
+		assert.equal(workbuddySystemPromptState("workbuddy").state, "installed");
+
+		// 幂等：重复安装不叠加托管块（一块 = 开始/结束两个 marker）
+		installWorkbuddySystemPrompt(apHome, { personaText: "AP_CACHE_PERSONA", mode: "replace" });
+		assert.equal(readFileSync(cache.promptTpl, "utf8").match(/agent-purge:workbuddy-cache/g).length, 2, "重复安装不叠加");
+
+		const restored = uninstallWorkbuddySystemPrompt(apHome);
+		assert.equal(restored.status, "restored");
+		assert.equal(readFileSync(cache.promptTpl, "utf8"), cache.promptText, "主提示词逐字节还原");
+		assert.equal(readFileSync(cache.fragment, "utf8"), cache.fragmentText, "片段逐字节还原");
+		assert.equal(workbuddySystemPromptState("workbuddy").state, "absent");
+	} finally {
+		if (previous === undefined) delete process.env.WORKBUDDY_CONFIG_DIR;
+		else process.env.WORKBUDDY_CONFIG_DIR = previous;
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("workbuddy: 插件 cache append 模式保留主提示词原文", () => {
+	const dir = mkdtempSync(join(tmpdir(), "ap-wb-cache-append-"));
+	const apHome = join(dir, "ap-data");
+	const home = join(dir, ".workbuddy");
+	const previous = process.env.WORKBUDDY_CONFIG_DIR;
+	process.env.WORKBUDDY_CONFIG_DIR = home;
+	const cache = makePluginCache(home);
+	try {
+		installWorkbuddySystemPrompt(apHome, { personaText: "AP_APPEND_PERSONA", mode: "append" });
+		const promptAfter = readFileSync(cache.promptTpl, "utf8");
+		assert.match(promptAfter, /You are \{\{ productName \}\}/, "append 保留原产品提示词");
+		assert.match(promptAfter, /AP_APPEND_PERSONA/);
+		uninstallWorkbuddySystemPrompt(apHome);
+		assert.equal(readFileSync(cache.promptTpl, "utf8"), cache.promptText);
+	} finally {
+		if (previous === undefined) delete process.env.WORKBUDDY_CONFIG_DIR;
+		else process.env.WORKBUDDY_CONFIG_DIR = previous;
 		rmSync(dir, { recursive: true, force: true });
 	}
 });

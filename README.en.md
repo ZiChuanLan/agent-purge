@@ -131,7 +131,7 @@ agent-purge status
 `arm <h>` attempts to enable all compatible persistent, shim, and slash channels for that harness. Project-level rule channels are managed separately.
 
 ## Supported Harnesses
-**In one line**: hosts that expose a full system-prompt entry point (Codex, OpenCode, DSH, Claude, Qwen, Qoder, Kimi, Kiro, CodeBuddy, Grok, omp) get a real replacement; Claude and Kilo leave residue; Antigravity, Crush, Continue, Auggie, Goose and zcode are append-only, so the native identity stays in the prompt.
+**In one line**: hosts that expose a full system-prompt entry point (Codex, OpenCode, DSH, Claude, Qwen, Qoder, Kimi, Kiro, CodeBuddy, Grok, omp) get a real replacement; on WorkBuddy 5.11.3 the live prompt sits in the plugin cache (`~/.workbuddy/plugins/cache/workbuddy-builtin/`: `welcomemode-*/prompt.tpl` + `interactionmode-*/fragments/*.md`) and editing it takes effect, while the `resources/templates/` main prompt is never read by the desktop app; Claude and Kilo leave residue; Antigravity, Crush, Continue, Auggie, Goose and zcode are append-only, so the native identity stays in the prompt.
 
 Channels, hot-switch timing, measured sizes, built-in safety clauses and residue per harness live on the docs site:
 

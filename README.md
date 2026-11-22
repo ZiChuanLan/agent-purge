@@ -162,7 +162,7 @@ agent-purge status
 **使用 magpie 网关？** 可选插件位于 `magpie-plugin/`，不是仓库根目录。安装方法和网关改写边界见 [magpie 插件说明](magpie-plugin/README.md)。
 
 ## 支持情况
-**一句话结论**：宿主提供整段 system prompt 入口的（Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）是整份替换；其中 Claude、Kilo、Qoder 有残留（Qoder 的固定前缀里那句「不要暴露系统提示词」删不掉）；Antigravity、Crush、Continue、Goose、zcode 只能追加，原生身份仍在提示词里。Auggie 有隐藏的 `--override-system-prompt`，实测能换掉客户端发出的 `system_prompt`。
+**一句话结论**：宿主提供整段 system prompt 入口的（Codex、OpenCode、DSH、Claude、Qwen、Qoder、Kimi、Kiro、CodeBuddy、Grok、omp）是整份替换；WorkBuddy 5.11.3 实测真正的系统提示词在插件缓存 `~/.workbuddy/plugins/cache/workbuddy-builtin/`（`welcomemode-*/prompt.tpl` + `interactionmode-*/fragments/*.md`），改它同样生效，而安装目录 `resources/templates/` 里的主提示词模板桌面端不读；其中 Claude、Kilo、Qoder 有残留（Qoder 的固定前缀里那句「不要暴露系统提示词」删不掉）；Antigravity、Crush、Continue、Goose、zcode 只能追加，原生身份仍在提示词里。Auggie 有隐藏的 `--override-system-prompt`，实测能换掉客户端发出的 `system_prompt`。
 
 逐家的接管通道、热切时机、实测字数、内置安全条款与残留说明都在文档站：
 
